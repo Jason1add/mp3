@@ -1,0 +1,1376 @@
+What do I need to do for all of this?
+
+Bash — List repo files and show README IN git ls-files | head -100 && echo --- && cat README* 2>/dev/null | head -200
+
+OUT .env.example .gitignore FAQ.md LICENSE README.md models/user.js package-lock.json package.json routes/home.js routes/index.js server.js submit.js
+MP #3: APIed Piper
+Due: Tuesday, Nov 3, 2026, 11:59PM CT
+Table of Contents
+Assignment
+Getting Started
+Tips
+Grading and Self-check
+Rules
+Submission Details
+1. Assignment
+
+The Basic Goal : Create an API for a task management / todo list.
+
+The Fun Goal : Imagine your hot new startup, Llama.io, is creating the best todo webapp on the market. You're competing in a crowded space with hot players like Asana, Wunderlist, Google Keep, etc, so your API has to be top-notch.
+
+Task
+
+Implement an API with the following end-points (they would be preceded by something like http://localhost:3000/api/). Your implementation should use Node, Express and Mongoose.
+
+Endpoints	Actions	Intended Outcome
+users	GET	Respond with a List of users
+	POST	Create a new user. Respond with details of new user
+users/:id	GET	Respond with details of specified user or 404 error
+	PUT	Replace entire user with supplied user or 404 error
+	DELETE	Delete specified user or 404 error
+tasks	GET	Respond with a List of tasks
+	POST	Create a new task. Respond with details of new task
+tasks/:id	GET	Respond with details of specified task or 404 error
+	PUT	Replace entire task with supplied task or 404 error
+	DELETE	Delete specified task or 404 error
+
+NOTE: In addition, the API has the following JSON encoded query string parameters for the GET requests to the users and tasks endpoints. You will also need to make sure the [+select+] parameter works for the users/:id and tasks/:id endpoints.:
+
+Parameter	Description
+where	filter results based on JSON query
+sort	specify the order in which to sort each specified field (1- ascending; -1 - descending)
+select	specify the set of fields to include or exclude in each document (1 - include; 0 - exclude)
+skip	specify the number of results to skip in the result set; useful for pagination
+limit	specify the number of results to return (default should be 100 for tasks and unlimited for users)
+count	if set to true, return the count of documents that match the query (instead of the documents themselves)
+
+Here are some example queries and what they would return:
+
+Query	Description
+http://localhost:3000/api/tasks	Returns full list of tasks
+http://localhost:3000/api/users	Returns full list of users
+http://localhost:3000/api/users?where={"_id": "55099652e5993a350458b7b7"}	Returns a list with a single user with the specified ID ('_id' will be different). If nothing matches, it is still a success: 200 with an empty list
+http://localhost:3000/api/tasks?where={"completed": true}	Returns a list of completed tasks
+http://localhost:3000/api/tasks?where={"_id": {"$in": ["59f930d6b1596b0cb3e82953","5a1b6d7bd72ba9106fe9239c"]}}	Returns a set of tasks
+http://localhost:3000/api/users?sort={"name": 1}	Returns a list of users sorted by name
+http://localhost:3000/api/users?select={"_id": 0}	Returns a list of users without the _id field
+http://localhost:3000/api/tasks?skip=60&limit=20	Returns tasks number from 61 to 80
+
+/:id vs where: the two are different things. GET /users/:id and GET /tasks/:id look up one resource by its id and return 404 if it does not exist; only select applies to them (any other query parameter is ignored). where, sort, skip, limit and count apply to the collection endpoints (GET /users, GET /tasks), which always respond 200, with an empty list (or a count of 0) when nothing matches. An invalid JSON value in one of these parameters is a 400.
+
+The API should be able to handle any combination of those parameters in a single request. For example, the following is a valid GET request:
+
+javascript
+http://localhost:3000/api/users?sort={"name": 1}&skip=60&limit=20
+
+Here is the User Schema:
+
+"name" - String
+"email" - String
+"pendingTasks" - [String] - The _id fields of the pending tasks that this user has
+"dateCreated" - Date - should be set automatically by server
+
+Here is the Task Schema:
+
+"name" - String
+"description" - String
+"deadline" - Date
+"completed" - Boolean
+"assignedUser" - String - The _id field of the user this task is assigned to - default ""
+"assignedUserName" - String - The name field of the user this task is assigned to - default "unassigned"
+"dateCreated" - Date - should be set automatically by server to present date
+
+We assume that each task can be assigned only to one user.
+
+Requirements
+Your database should be on MongoDB Atlas. NOTE: Please add "Allow access from anywhere" to your cluster in the IP Whitelist (This is usually not a good practice in real use.)
+Responses from your API should be a JSON object with two fields. The first field should be named message and should contain a human readable String. The second field should be named data and should contain the actual JSON response object. For example, here is a valid response:
+javascript
+{
+    "message": "OK",
+    "data": {
+        "_id": "55099652e5993a350458b7b7",
+        "email": "khandek2@illinois.edu",
+        "name": "Sujay Khandekar"
+    }
+}
+Error responses from your API should also also be a JSON object with a message and data fields. Messages have to sensible and human readable so that on the client side it can be displayed to the user. Also, it should be independent of the server side technology that you are using. For example, your API should not return an error message directly from Mongoose to the client.
+Your API should respond with appropriate HTTP status codes for both successful and error responses. You should at least have the following codes: 200 (success), 201 (created), 204(no content), 400(bad request), 404 (not found), 500 (server error).
+You should implement the query string functionality by using the methods provided by Mongoose (as opposed to querying Mongoose for all the results and then doing the filtering/sorting/skipping etc. in your Node/Express application code).
+Have server side validation for:
+Users cannot be created (or updated) without a name or email. All other fields that the user did not specify should be set to reasonable values.
+Multiple users with the same email cannot exist.
+Tasks cannot be created (or updated) without a name or a deadline. All other fields that the user did not specify should be set to reasonable values.
+Your API should guarantee two-way reference between Task and User, see Two-way references below.
+Status codes for requests with a body (POST / PUT)
+Situation	Status
+Success: POST	201 with the created resource in data
+Success: PUT	200 with the updated resource in data
+/:id in the URL is not an existing resource (this includes ids that are not valid ObjectIds)	404
+Missing/invalid required field (name, email, deadline) or a value of the wrong type	400
+Email already used by another user	400
+A task id in pendingTasks / a user id in assignedUser is not a valid id format	400
+A task id in pendingTasks / a user id in assignedUser is a valid id but no such task/user exists	404
+A completed task in pendingTasks	400
+assignedUserName does not match the name of the user assignedUser	400
+Anything unexpected (e.g. database failure)	500, with a message that does not leak Mongoose/MongoDB internals
+
+When several of these apply, check in this order: URL id (404), then field format and values (400), then whether the referenced tasks/users exist (404). Nothing may be changed in the database when a request fails.
+
+Two-way references
+
+A task is pending if it is not completed. Every pending task that is assigned to a user must be in that user's pendingTasks, and every id in a user's pendingTasks must be a pending task whose assignedUser/assignedUserName are that user's _id/name. An unassigned task has assignedUser: "" and assignedUserName: "unassigned". How you keep these in sync is up to you, but the following must hold after every request.
+
+PUT /users/:id replaces the user with name, email and pendingTasks (missing pendingTasks means an empty list). dateCreated never changes. Let old be the user's previous pendingTasks and new the requested list:
+
+Tasks	What happens
+in old but not in new	unassigned: assignedUser = "", assignedUserName = "unassigned"
+in new but not in old	assigned to this user: assignedUser = <user _id>, assignedUserName = <user name>
+in new but currently assigned to another user	the task moves: it is removed from the other user's pendingTasks, then assigned to this user as above
+already assigned to this user (completed ones too)	stay assigned; if the user's name changed, their assignedUserName is updated
+
+PUT /tasks/:id replaces the task (missing fields get their defaults; dateCreated never changes):
+
+If the task is assigned (assignedUser is set), it is added to that user's pendingTasks unless completed is true; a completed task is removed from the user's pendingTasks but stays assigned to the user.
+If assignedUser changed, the task is removed from the previous user's pendingTasks.
+Setting assignedUser to "" unassigns the task (assignedUserName becomes "unassigned").
+assignedUser and assignedUserName must refer to the same user (400 otherwise; if assignedUserName is omitted you may fill it in). Changing assignedUser of an already completed task through PUT is allowed, since PUT replaces the whole task; the task is then simply assigned to the new user and is not added to anyone's pendingTasks.
+Setting completed back to false on an assigned task makes it pending again (added to the user's pendingTasks).
+
+POST /users with pendingTasks and POST /tasks with assignedUser follow the same rules as the corresponding PUT.
+
+DELETE /tasks/:id removes the task from its assigned user's pendingTasks. DELETE /users/:id unassigns all of the user's tasks (including completed ones): assignedUser = "", assignedUserName = "unassigned".
+
+2. Getting Started
+Create a public repository under your own account on GitHub by clicking the use this template button on the top right.
+Clone the repository you created to your local machine.
+Use the current Node.js LTS (Node 24; check with node -v). Older and newer non-LTS versions (e.g. Node 25) are not supported. We recommend nvm: nvm install --lts && nvm use --lts.
+Create your environment file from the template and fill in your MongoDB connection string: cp .env.example .env
+Install dependencies: npm install
+Uncomment the mongoose.connect(...) line in server.js, then start the dev server: npm start
+Deploy your API (see Tips) and check it with the autograder, see Grading and Self-check with submit.js.
+3. Tips
+Start early!
+Please DO NOT delete the .gitignore file from the project, you will lose 1% point
+DO NOT push your .env file (it contains your database password) to your repository, or you will lose 1% point. .env is already listed in .gitignore; you only need to create it from .env.example (step 4 above). We will check that .env is not in your repository.
+If you accidentally committed a .env file (e.g. one from an older template), stop tracking it with git rm --cached .env, then git commit -m "Remove .env from version control" and push. The file stays on your machine. Anything you ever pushed is still in your git history, so also change your MongoDB database user's password.
+Check out Postman to your API
+Free MongoDB server - MongoDB Atlas
+In order for us to view and grade your MP, you will be deploying your APIs on Render. Refer to DevLab videos and slides for a demo including setting up MongoDB, connecting Express.js and deploying on Render.
+
+For answers to some popular questions see FAQ.md.
+
+Grading
+
+Your grade is determined by an autograder that sends HTTP requests to your deployed API (it cannot reach localhost) and checks the responses. Within each item, points are given for correct behavior and for the correct HTTP status code (roughly 75% / 25%). The exact test cases are not released, so test your API thoroughly, including unusual inputs and combinations of query parameters.
+
+Area	What is tested	Weight
+Creating & validating users and tasks	POST to /users and /tasks with valid and invalid data: response format, default values, status codes	20%
+select on single resources	select on /users/:id and /tasks/:id	7.5%
+Updating missing resources	PUT to /users/:id and /tasks/:id for ids that do not exist	10%
+Two-way references and consistency	Updating a task or a user keeps assignedUser, assignedUserName and pendingTasks consistent in both directions; inconsistent assignments are rejected	27.5%
+Query parameters	where, sort, limit and count on GET /tasks	15%
+Deleting	DELETE of tasks and users (response, status code) and fetching them afterwards	20%
+
+Separately from the autograder score, the penalties listed in Tips (.gitignore, .env) apply. Your deployment needs to be up and connected to your database when your assignment is graded.
+
+Self-check with submit.js
+
+Bash — Show rest of README and scaffold code IN sed -n '/## Self-check/,$p' README.md && echo ---- && cat server.js routes/*.js models/user.js package.json .env.example
+
+OUT
+
+Self-check with submit.js
+Deploy your API on Render (and make sure it is connected to your Atlas database).
+Open submit.js and set API_URL to your deployed URL (e.g. https://my-mp3.onrender.com). Do not change AUTOGRADER_URL.
+Run npm run submit (requires Node 24 LTS).
+
+You will see your score and, for every item that did not get full credit, feedback describing what went wrong. Notes:
+
+A run takes a minute or more. If your Render service is asleep it needs to wake up first; if you get time-out errors, open your API URL in a browser, wait for it to respond, and try again.
+The autograder is rate limited (about 5 runs per 2 minutes). Read the feedback and fix several issues before running again.
+The autograder creates test users and tasks in your database and tries to delete them at the end. If your DELETE endpoints are broken, some test data may be left behind. Clean it up yourself.
+submit.js does not submit your assignment; see Submission Details.
+Rules
+This is an individual assignment. No collaboration is permitted.
+It is not permitted to copy/paste code that is not your own. You are, however, free to look at different code sources for inspiration and clarity. All sources (code as well as reading material) that you reference to complete this assignment must be declared in the submission.
+If you think something you’re doing might not be acceptable, please ask on Piazza.
+Submission Details
+
+Fill out and submit the form Submission Form. Running submit.js is only a self-check and is not a submission.
+
+Large Language Model Usage Policy
+
+We acknowledge the transformative potential of Large Language Models (LLM) in generating code; however, we are still in the nascent stages of understanding how to embed LLMs in developer workflows to write code more efficiently while maintaining quality. Therefore, we will not be teaching students directly how to use LLMs to develop web applications.
+
+As part of this class, we do encourage students to experiment with LLM services such as OpenAI's ChatGPT to generate source code for MPs. If LLMs are used to generate code for an MP, students must (1) submit their chatlogs along with their source code, and (2) answer survey questions related to their experience using LLMs in the grading form. Failure to do this will be a violation of the academic integrity policy of this course.
+
+// Get the packages we need var express = require('express'), router = express.Router(), mongoose = require('mongoose');
+
+// Read .env file require('dotenv').config();
+
+// Create our Express application var app = express();
+
+// Use environment defined port or 3000 var port = process.env.PORT || 3000;
+
+// Connect to a MongoDB --> Uncomment this once you have a connection string!! //mongoose.connect(process.env.MONGODB_URI).catch(function (err) { console.error('MongoDB connection error:', err.message); });
+
+// Allow CORS so that backend and frontend could be put on different servers var allowCrossDomain = function (req, res, next) { res.header("Access-Control-Allow-Origin", "*"); res.header("Access-Control-Allow-Headers", "X-Requested-With, X-HTTP-Method-Override, Content-Type, Accept"); res.header("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS"); next(); }; app.use(allowCrossDomain);
+
+// Parse URL-encoded and JSON request bodies app.use(express.urlencoded({ extended: true })); app.use(express.json());
+
+// Use routes as a module (see index.js) require('./routes')(app, router);
+
+// Start the server app.listen(port); console.log('Server running on port ' + port); module.exports = function (router) {
+
+var homeRoute = router.route('/');
+
+homeRoute.get(function (req, res) {
+    var connectionString = process.env.TOKEN;
+    res.json({ message: 'My connection string is ' + connectionString });
+});
+
+return router;
+
+} /*
+
+Connect all of your endpoints together here. */ module.exports = function (app, router) { app.use('/api', require('./home.js')(router)); }; // Load required packages var mongoose = require('mongoose');
+
+// Define our user schema var UserSchema = new mongoose.Schema({ name: String });
+
+// Export the Mongoose model module.exports = mongoose.model('User', UserSchema); { "name": "mp3_starter", "version": "1.0.0", "description": "MP3 Starter for CS409 Fall 2026", "authors": [ "Arjun Sivaraman arjun16@illinois.edu", "Tianyi Zhong tzhong8@illinois.edu", "James Lee jwlee11@illinois.edu", "Sujay Khandekar khandek2@illinois.edu" ], "engines": { "node": ">=24" }, "scripts": { "start": "node server.js", "dev": "nodemon server.js", "submit": "node submit.js" }, "repository": { "type": "git", "url": "https://github.com/cs409-fa25/mp3.git" }, "dependencies": { "dotenv": "^17.2.3", "express": "^5.1.0", "mongoose": "^9.0.0" }, "devDependencies": { "nodemon": "^3.1.10" } }
+
+Copy this file to a new file named ".env" (cp .env.example .env) and fill in your own values.
+".env" is listed in .gitignore, never commit it: it contains your database password.
+
+TOKEN=secret-starter-mern MONGODB_URI=mongodb+srv://<username>:<password>@<your-cluster>.mongodb.net/<database>?retryWrites=true&w=majority 8:45 PM
+
+This is the CS409 MP3 assignment: build a REST API for a todo list using Node + Express + Mongoose, deploy it to Render, and use MongoDB Atlas for the database. The deadline is 11:59 PM CT on 2026-11-03 (tomorrow). The repo currently only has the starter template: one example route, a User model with only a name field, and the database connection line still commented out.
+
+What needs to be done
+
+Environment setup
+Create a cluster on MongoDB Atlas and set the IP whitelist to "Allow access from anywhere"
+Run cp .env.example .env and fill in MONGODB_URI. .env must not be committed, and .gitignore must not be deleted, otherwise 1% is deducted for each
+Uncomment the mongoose.connect(...) line at server.js:16
+Two models
+User: name, email (must be unique), pendingTasks: [String], dateCreated (auto-generated)
+Task: name, description, deadline, completed, assignedUser (default ""), assignedUserName (default "unassigned"), dateCreated
+10 endpoints (all under /api)
+/users and /tasks: GET (list), POST (create, returns 201)
+/users/:id and /tasks/:id: GET, PUT (full replacement), DELETE; return 404 when not found
+Query parameters
+List endpoints support where, sort, select, skip, limit, count; values are JSON and can be combined arbitrarily
+These must be implemented with Mongoose query methods, not by fetching everything and filtering in JS
+Default limit: 100 for tasks, unlimited for users
+/:id endpoints only support select
+Invalid JSON in a parameter returns 400
+Response format and status codes
+All responses use the { message, data } format
+Error messages must be human-readable, and Mongoose errors must not be returned directly to the client
+Status codes must include at least 200, 201, 204, 400, 404, 500
+Validation rules: User needs name and email, Task needs name and deadline, email must be unique
+When several errors apply, check in this order: the id in the URL (404), then field format (400), then whether referenced objects exist (404)
+When a request fails, nothing in the database may be modified
+Two-way references (27.5% of the grade, the hardest part)
+A user's pendingTasks must always stay consistent with the tasks' assignedUser/assignedUserName
+PUT/POST user, PUT/POST task, and DELETE must all update the other side; see the "Two-way references" section of the README for the exact rules
+Cases that are easy to miss:
+A task moves from one user to another
+After a task is marked completed, it is removed from pendingTasks but stays assigned to that user
+When a user is renamed, assignedUserName on all of their tasks must be updated
+When a user is deleted, all of their tasks become unassigned
+Deployment and submission
+Deploy to Render
+Change API_URL in submit.js to your deployed address and run npm run submit to self-check; it shows your score and the reasons for deductions
+Finally, you must fill out the Google form to officially submit; running submit.js does not count as a submission
+If you used an LLM (including me) to write code, you must submit the chat log together with the code and fill out the related survey
+
+Grading weights
+
+Item	Weight
+Creating and validating	20%
+select on /:id	7.5%
+PUT on missing resources	10%
+Two-way references	27.5%
+Query parameters on GET /tasks	15%
+Deleting	20%
+
+Time is tight. If you want, I can write the models, routes and the two-way sync logic directly for you.
+
+Can you do all of it for me, following the requirements?
+
+Bash — Read FAQ, node version, submit.js header IN cat FAQ.md && node -v && head -60 submit.js && (where mongod 2>/dev/null; ls .env 2>/dev/null; ls node_modules 2>/dev/null | head -3)
+
+OUT
+
+FAQ
+
+Here are some answers to some popular questions from previous years.
+
+Lost In The Sauce?
+Where do I begin?
+
+I'm really confused on how to start or what to do for MP3?
+
+Answer: Please start by watching the dev lab recordings, as they often provide instructions on how to approach the MPs. Additionally, going through the class slides and recordings can give you a better understanding of the concepts. Lastly, ensure you thoroughly read through the MP3 instructions, as they are designed to guide you through the assignment. If after doing all these, you still have questions, please don't hesitate to reach out for further clarification. If you did all of that and are still confused, please join the next available office hours.
+Next Steps After Setting up MongoDB Cluster?
+
+Confused on how to start. I've set up the mongodb cluster and everything but I don't know what to do next.
+
+Answer: The next step is to get the connection string. If you've set up the MongoDB cluster, Click on "Connect" to get the connection string. The connection string typically looks like: mongodb+srv://username:password@link/test?retryWrites=true Replace <username> and <password> with your database username and password. The database credentials are not the login details for your MongoDB Atlas account.
+Testing?
+
+How to check if my code is correct? Just NPM start? What else should i do to check if my code can pass the tests?
+
+Answer: Once you implemented all 4 endpoints, you can use tools like Postman to manually test your API routes. Ensure that all endpoints return the expected response and status codes. Inspect the data in your database to ensure that the data gets stored, updated, and deleted as intended based on your API actions.
+
+users/:id GET Respond with details of specified user or 404 error
+PUT Replace entire user with supplied user or 404 error
+DELETE Delete specified user or 404 error
+
+I just wonder how I can give and check GET PUT and DELETE requests for both users and tasks from using URLs. or is there any other way for doing this?
+
+Answer: If you are asking how to test these endpoints and read through the data you send in and receive, I would recommend using Postman! It provides a clean interface for making HTTP requests. Otherwise, look up the documentation for curl and have fun :D
+How do I run the autograder?
+
+Is there a way to see my score before the deadline?
+
+Answer: Yes. Deploy your API, set API_URL in submit.js, and run npm run submit. See "Self-check with submit.js" in the README. The autograder cannot reach localhost, so you must use your deployed URL.
+How do I read the autograder's feedback?
+
+It says "FAIL" for an item but my Postman requests work.
+
+Answer: Each item that did not receive full credit lists what was wrong, e.g. a wrong status code, a missing field, or a broken two-way reference. We don't release the exact requests the autograder sends, so also try variations in Postman (invalid input, missing fields, combining query parameters, ids that do not exist). Items marked "Skipped" depend on an earlier item (e.g. creating a user) that failed, so fix that one first.
+submit.js times out or says "no response from server" Answer: A free Render service sleeps when idle and can take a minute or more to wake up. Open your API URL in a browser, wait for a response, and run again. Also check that your API URL is the base URL of your deployment (the autograder adds /api itself), that it is public, and that your MongoDB Atlas cluster allows access from anywhere.
+"Too many submissions"
+
+I got a rate limit error from the autograder.
+
+Answer: The autograder allows a limited number of runs per student in a time window. Wait a few minutes, and fix multiple issues between runs.
+Is the submit.js score my final grade? Answer: It is the output of the same autograder used for grading, but running it is not a submission. Submit through the form in the README, and make sure your deployment stays up.
+Node.js and packages
+Which Node.js version should I use? I get errors on Node 25. Answer: Use the current LTS release, Node 24 (nvm install --lts && nvm use --lts). The starter now uses current Mongoose (v9) and Express (v5), which work on Node 24 LTS; do not use odd-numbered, non-LTS releases such as Node 25. The old starter pinned Mongoose 5, which does not work on newer Node versions; if your package.json still says "mongoose": "^5...", update it (or re-copy it from the template) and run npm install. With Mongoose 9 you do not need options like useNewUrlParser/useUnifiedTopology, just mongoose.connect(process.env.MONGODB_URI), and callbacks are no longer supported (use async/await or promises).
+MongoDB Questions
+MP3 Collection Constraints
+
+In MP3, we will create two collections in our database, User and Task, and I notice there are some constraints. I wonder if we should enforce these constraints in the Schema defined by Mongoose, or we should enforce them in our backend server?
+
+Answer: "I wonder if we should enforce these constraints in the Schema defined by Mongoose" <-- this should be sufficient.
+Mongoose timestamps
+
+For the user and task schema, can we use the mongoose timestamps "createdAt" for the "dateCreated" field, or we have to manually create "dateCreated" filed and set accordingly.
+
+Answer: Yes, you can use Mongoose's built-in timestamps, e.g. timestamps: { createdAt: 'dateCreated', updatedAt: false } so the field is named dateCreated. Whichever way you do it, dateCreated must be set by the server when the document is created, must be ignored if a client sends it, and must not change on PUT.
+Deprecated URL Warning
+    I am getting this error: 
+
+    (node:72912) [DEP0170] DeprecationWarning: The URL mongodb://<"username">:<"password">@ac-awddrux-shard-00-00.1xcdsnq.mongodb.net:27017,ac-awddrux-shard-00-01.1xcdsnq.mongodb.net:27017,ac-awddrux-shard-00-02.1xcdsnq.mongodb.net:27017/test?authSource=admin&replicaSet=atlas-6tfpfd-shard-0&retryWrites=true&ssl=true is invalid. Future versions of Node.js will throw an error.
+    (Use `node --trace-deprecation ...` to show where the warning was created)
+
+    When I look at http://localhost:4000/api on postman I am getting the correct response so I am unsure what this error means and how to fix it. Do I need to worry about this or is it fine as long as the link works like expected?
+__Answer__: If possible, switch to the newer SRV-style connection string provided by MongoDB Atlas. It's shorter and often recommended for newer applications. It typically looks like this:
+
+`mongodb+srv://username:password@your-cluster.mongodb.net/database`
+MP3 Project Clarifications
+.env
+
+In the .env file, other than the MONGODB_URI key, do we need to update the TOKEN key or we just leave it as what it is?
+
+Answer: The repository contains .env.example, not .env. Copy it (cp .env.example .env) and fill in MONGODB_URI with your own connection string; leave TOKEN as it is. .env is already in .gitignore, so it will not be committed. If you did commit a .env file, run git rm --cached .env, commit and push, and change your database password (see the README Tips).
+Using external packages
+
+Are we allowed to install other packages, such as Morgan to monitor the request?
+
+Answer: Yes, you can install additional packages like Morgan if they help with development and debugging. However, always ensure that any additional packages or tools you use do not conflict with the primary requirements of the project.
+Conflicting Inputs MP3
+
+Do we have to check if there is a conflict of assignment between tasks and users? For example, a task is assigned to user A (and is in A's pendingTasks), and then user B is updated (PUT) with that task's id in its pendingTasks. What should happen?
+
+Answer: This is not an error. PUT replaces the user, so the task moves: it is removed from A's pendingTasks and assigned to B (assignedUser = B's _id, assignedUserName = B's name). The same applies to POST /users with pendingTasks. A task is assigned to at most one user at any time. (Errors are only for invalid input: malformed ids 400, non-existent tasks 404, completed tasks 400.) See the README section "Two-way references".
+404 Clarification
+
+users/:id GET Respond with details of specified user or 404 error
+
+When http://localhost:4000/api/users?where={"_id": "55099652e5993a350458b7b7"} can't find a user, which do we give: 404 error message or {"message":"OK","data":[]}?
+
+Answer: These are two different endpoints with two different rules:
+GET /api/users/:id (and /api/tasks/:id) looks up one resource. If it does not exist, or the id is not a valid id at all, respond 404.
+GET /api/users?where=... (and /api/tasks?where=...) returns a list. No match is not an error: respond 200 with {"message":"OK","data":[]} (or 0 with count=true). Do not return 404 here.
+(Earlier versions of this FAQ said a where with no match should return 404. That is no longer the rule.)
+Cascade Updates
+
+When implementing PUT for Task or User, do we have to make sure the other one gets updated as well?
+
+Answer: Yes. The complete rules are in the README section "Two-way references"; the cases people most often ask about are listed here. Let old be a user's previous pendingTasks and new the list in the PUT /users/:id body:
+Case	Result
+tasks in old but not in new	assignedUser = "", assignedUserName = "unassigned"
+tasks in new but not in old	assignedUser = <user _id>, assignedUserName = <user name>
+a task in new that belongs to another user	removed from the other user's pendingTasks, then assigned to this user
+the user's name changed	assignedUserName is updated on all the user's tasks (completed ones included)
+PUT /tasks/:id assigns an uncompleted task to a user	the task id is added to that user's pendingTasks
+PUT /tasks/:id changes assignedUser	the task id is removed from the previous user's pendingTasks
+PUT /tasks/:id with completed: true	removed from the user's pendingTasks, the task stays assigned to that user
+PUT /tasks/:id with completed: false and an assigned user	the task id is (re)added to that user's pendingTasks
+PUT /tasks/:id with assignedUser: ""	unassigned, and removed from the previous user's pendingTasks
+DELETE /tasks/:id	removed from the assigned user's pendingTasks
+DELETE /users/:id	all the user's tasks (completed too) become "" / "unassigned"
+Any approach that gives these results is fine, you are free to implement it more cleverly. Note that if your endpoint allows changing pendingTasks, it must also update the tasks that were added/removed, and if it allows changing a task's assignedUser, it must update the users' pendingTasks.
+
+SCENARIO: PUT request to /api/tasks/:id but the Task is already assigned to a User. Should we always overwrite, or send an error?
+
+Answer: Always overwrite (PUT replaces the resource) and update the other documents so everything stays consistent. Errors are only for invalid input, see the next question. DELETE on an existing id always succeeds and cleans up references.
+PUT /users/:id: what should the status codes be? Answer: In this order:
+#	Situation	Response
+1	:id is not an existing user (including a malformed id)	404
+2	name or email missing / wrong type; a pendingTasks entry is not a valid id; pendingTasks is not a list	400
+3	email is used by another user (keeping the user's own email is fine)	400
+4	an id in pendingTasks is valid but no such task exists	404
+5	a task in pendingTasks is completed	400
+6	unexpected server/database error	500
+7	success	200, with the updated user (the new pendingTasks) in data
+On success: dateCreated is unchanged, the tasks are updated as described above, and nothing is changed for failed requests. The same ideas apply to PUT /tasks/:id (404 for an unknown task id, 400 for missing name/deadline, a malformed assignedUser, or an assignedUserName that does not match assignedUser, 404 for a well-formed assignedUser that does not exist).
+
+Does the user's pendingTasks need to be a task that is not completed? If a task is created or updated with completed set to true, should it be added to the assigned user's pendingTasks?
+
+Answer: No. Completed tasks are never in pendingTasks, and a request that puts a completed task there gets 400.
+
+Can I change assignedUser (or assignedUserName) of a completed task with PUT?
+
+Answer: Yes, it is allowed. PUT replaces the whole task and the new assignment must still be valid (existing user, matching assignedUserName). Because the task is completed it is not added to anyone's pendingTasks. A completed task keeps its assignedUser (that is how we know who completed it), so e.g. PUT with completed: true and the same assignedUser must succeed and remove the task from the user's pendingTasks. If you set completed back to false the task becomes pending again for its assigned user.
+Queries
+
+"You will also need to make sure the select parameter works for the users/:id and tasks/:id endpoints.:"
+
+Does it mean we can have an API endpoint like this?
+
+http://localhost:4000/api/users/:1?where={"name": "web_prog"}
+
+Follow up questions what if userId 1 = "soemthing" and user with name "web_prog" has ID 5. What should we return in such case.
+
+Answer: Based on the requirements provided, when accessing the endpoints users/:id and tasks/:id, only the select parameter is required to function. All other parameters can be ignored for these specific endpoints. Thus, in the query: http://localhost:4000/api/users/:1?where={"name": "web_prog"} if someone is trying to access a specific user by ID, the ID is the only filter, and query parameters other than select are ignored (do not return an error for them). In the follow-up question, you should return the user with ID 1 since the:id filter is primary.
+Error Handling
+    In the mp instructions it is mentioned that:
+
+    "Error responses from your API should also also be a JSON object with a message and data fields. Messages have to sensible and human readable so that on the client side it can be displayed to the user. Also, it should be independent of the server side technology that you are using. For example, your API should not return an error message directly from Mongoose to the client."
+
+    "message" field should have some human readable string. What should the "data" field contain? Can it contain the actual error message?
+
+    example:
+
+    {
+    "message": "Internal Server Error",
+    "data": "Cast to ObjectId failed for value \"653b71db6097fe49e83f1e\" (type
+    string) at path \"_id\" for model \"User\""
+    }
+__Answer__: The "data" field can contain additional information regarding the error, but you should avoid sending detailed error messages, especially those generated directly from Mongoose. "Invalid ID format provided for User" could be an example.
+    For users/:id and tasks/:id it is mentioned in the instructions to return 404 error in case the user or task is not found.
+
+    If a valid _id is used in the query, but there is no user with that _id, then my API is returning 404 error:
+
+    http://localhost:4000/api/users/:id 
+
+    id - 653b71db6097fe49e83f1e94
+
+    Status 404 Not Found
+
+    {
+    "message": "User Not Found",
+    "data": "User not found."
+    }
+    But when I use some invalid _id like some random string, then I am getting this error:
+    http://localhost:4000/api/users/:id
+    id - fdsfdsfrwdsfc
+    Status 500 Internal Server Error
+    {
+    "message": "Internal Server Error",
+    "data": "Cast to ObjectId failed for value \"fdsfdsfrwdsfc\" (type string) at path \"_id\" for model \"User\""
+    }
+    How to deal with such cases? Should I return the above response or 404 response in case _id is invalid?
+__Answer__: For the `:id` in the URL (`/users/:id`, `/tasks/:id`), respond `404` both when the id is well-formed but nobody has it, and when it is not a valid id at all: from the client's point of view the resource does not exist, and a `500` would be wrong because it is not a server problem. Use a message such as "User not found".
+
+For ids that appear in the *request body* (`pendingTasks` entries, `assignedUser`) the distinction matters: a malformed id is a `400` (bad request), a well-formed id that does not exist is a `404`. See the status code table in the README.
+Submission Logistics
+Video Submission?
+
+For MP3, do we submit a video along with the repo link? Asking to make surebecause I only see repo link and nothing else.
+
+Answer: No, you don't have to submit a video for MP3.
+MongoDB
+
+Should we clean up and empty the database before making a submission?
+
+Answer: No, based on the requirements provided, you should not clean up and empty the database before making a submission. You do not need to populate it with any particular amount of data. Note that the autograder creates (and tries to delete) a few test users and tasks in your database when you run submit.js. v22.13.1 // Self-check your MP3 against the course autograder. // // 1. Deploy your API (e.g. on Render) and set API_URL below to its base URL. // 2. Run: npm run submit (or: node submit.js) // // The autograder cannot reach localhost, so API_URL must be your deployed URL. // Requires Node 24 (LTS).
+
+const API_URL = "https://YOUR-APP-NAME.onrender.com"; // <-- change this to your deployed API's URL
+
+// Grader URL; DO NOT CHANGE. const AUTOGRADER_URL = "https://cs409-mp3-grader.onrender.com";
+
+const TIMEOUT_MS = 6 * 60 * 1000; // a free-tier Render app may need a minute to wake up
+
+function fail(message) { console.error(\n${message}\n); process.exit(1); }
+
+async function main() { if (API_URL.includes("YOUR-APP-NAME")) { fail("Please edit API_URL at the top of submit.js to your deployed API URL."); } if (AUTOGRADER_URL.includes("REPLACE-WITH")) { fail("AUTOGRADER_URL has not been configured. Please contact the course staff."); }
+
+console.log(`Submitting ${API_URL} to the autograder...`);
+console.log("This can take a few minutes (the autograder runs many requests against your API).\n");
+
+let res;
+try {
+    res = await fetch(`${AUTOGRADER_URL.replace(/\/+$/, "")}/grade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: API_URL }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+} catch (e) {
+    fail(`Could not reach the autograder (${e.name === "TimeoutError" ? "timed out" : e.message}). Try again in a minute.`);
+}
+
+let result;
+try {
+    result = await res.json();
+} catch {
+    fail(`The autograder returned an unexpected response (HTTP ${res.status}).`);
+}
+if (!res.ok) {
+    fail(`Autograder error (HTTP ${res.status}): ${result.error || JSON.stringify(result)}`);
+}
+
+const label = { passed: "PASS   ", partial: "PARTIAL", failed: "FAIL   " };
+for (const t of result.tests) {
+    console.log(`[${label[t.status] || t.status}] ${t.test}  (${t.awardedScore}/${t.possibleScore})`);
+    for (const m of t.messages) console.log(`           - ${m}`);
+}
+console.log(`\nScore: ${result.score}/100  (${result.awardedPoints}/${result.totalPoints} points)\n`);
+
+} 8:48 PM
+
+This assignment allows using an LLM to write code, but the chat log must be attached when submitting. I'll write all the code first, then test it locally against a temporary database.
+
+Write C:\Users\Jason\Documents\GitHub\mp3\models\user.js 17 lines // Load required packages var mongoose = require('mongoose');
+
+// Define our user schema var UserSchema = new mongoose.Schema({ name: { type: String, required: true }, email: { type: String, required: true, unique: true }, pendingTasks: { type: [String], default: [] } }, { // dateCreated is set by the server on creation and never changes timestamps: { createdAt: 'dateCreated', updatedAt: false }, versionKey: false });
+
+// Export the Mongoose model module.exports = mongoose.model('User', UserSchema); Write C:\Users\Jason\Documents\GitHub\mp3\models\task.js 20 lines // Load required packages var mongoose = require('mongoose');
+
+// Define our task schema var TaskSchema = new mongoose.Schema({ name: { type: String, required: true }, description: { type: String, default: '' }, deadline: { type: Date, required: true }, completed: { type: Boolean, default: false }, assignedUser: { type: String, default: '' }, assignedUserName: { type: String, default: 'unassigned' } }, { // dateCreated is set by the server on creation and never changes timestamps: { createdAt: 'dateCreated', updatedAt: false }, versionKey: false });
+
+// Export the Mongoose model module.exports = mongoose.model('Task', TaskSchema); Write C:\Users\Jason\Documents\GitHub\mp3\routes\helpers.js 141 lines /*
+
+Shared helpers for the users and tasks routes. */
+
+// An error that carries an HTTP status and a client-safe message function ApiError(status, message, data) { this.status = status; this.message = message; this.data = data === undefined ? null : data; }
+
+function send(res, status, message, data) { res.status(status).json({ message: message, data: data === undefined ? null : data }); }
+
+// Ids are 24 hex characters (MongoDB ObjectId) function isValidId(id) { return typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id); }
+
+function isNonEmptyString(value) { return typeof value === 'string' && value.trim() !== ''; }
+
+function parseJsonParam(query, key) { if (query[key] === undefined) return undefined; var value; try { value = JSON.parse(query[key]); } catch (e) { throw new ApiError(400, 'Invalid JSON in "' + key + '" parameter'); } if (value === null || typeof value !== 'object' || Array.isArray(value)) { throw new ApiError(400, '"' + key + '" parameter must be a JSON object'); } return value; }
+
+function parseIntParam(query, key) { if (query[key] === undefined) return undefined; var value = Number(query[key]); if (query[key] === '' || !Number.isInteger(value) || value < 0) { throw new ApiError(400, '"' + key + '" parameter must be a non-negative integer'); } return value; }
+
+function parseBoolParam(query, key) { var value = query[key]; if (value === undefined) return false; if (value === 'true' || value === '1') return true; if (value === 'false' || value === '0' || value === '') return false; throw new ApiError(400, '"' + key + '" parameter must be true or false'); }
+
+// "select" (also accepted as "filter", its old name) function parseSelect(query) { var select = parseJsonParam(query, 'select'); return select !== undefined ? select : parseJsonParam(query, 'filter'); }
+
+// Errors MongoDB/Mongoose raise because of bad client input in query parameters function isQueryInputError(err) { return ['CastError', 'MongoServerError', 'StrictModeError', 'ObjectParameterError'].indexOf(err.name) !== -1; }
+
+// GET on a collection: where, sort, select, skip, limit, count async function listHandler(Model, defaultLimit, req, res) { var where = parseJsonParam(req.query, 'where') || {}; var sort = parseJsonParam(req.query, 'sort'); var select = parseSelect(req.query); var skip = parseIntParam(req.query, 'skip'); var limit = parseIntParam(req.query, 'limit'); var count = parseBoolParam(req.query, 'count');
+
+var query;
+if (count) {
+    var options = {};
+    if (skip !== undefined) options.skip = skip;
+    if (limit !== undefined) options.limit = limit;
+    query = Model.countDocuments(where, options);
+} else {
+    query = Model.find(where);
+    if (sort) query = query.sort(sort);
+    if (select) query = query.select(select);
+    if (skip !== undefined) query = query.skip(skip);
+    if (limit === undefined) limit = defaultLimit;
+    if (limit !== undefined) query = query.limit(limit);
+}
+
+var result;
+try {
+    result = await query.exec();
+} catch (err) {
+    if (isQueryInputError(err)) throw new ApiError(400, 'Invalid query parameters');
+    throw err;
+}
+send(res, 200, 'OK', result);
+
+}
+
+// GET on a single resource: only "select" applies async function getOneHandler(Model, label, req, res) { var select = parseSelect(req.query); if (!isValidId(req.params.id)) throw new ApiError(404, label + ' not found');
+
+var query = Model.findById(req.params.id);
+if (select) query = query.select(select);
+
+var doc;
+try {
+    doc = await query.exec();
+} catch (err) {
+    if (isQueryInputError(err)) throw new ApiError(400, 'Invalid select parameter');
+    throw err;
+}
+if (!doc) throw new ApiError(404, label + ' not found');
+send(res, 200, 'OK', doc);
+
+}
+
+// Wrap an async route so thrown errors become JSON responses function wrap(fn) { return function (req, res) { Promise.resolve(fn(req, res)).catch(function (err) { if (err instanceof ApiError) return send(res, err.status, err.message, err.data); if (err && err.code === 11000) return send(res, 400, 'A user with this email already exists'); console.error(err); send(res, 500, 'Internal server error'); }); }; }
+
+module.exports = { ApiError: ApiError, send: send, isValidId: isValidId, isNonEmptyString: isNonEmptyString, listHandler: listHandler, getOneHandler: getOneHandler, wrap: wrap }; Write C:\Users\Jason\Documents\GitHub\mp3\routes\users.js 119 lines var User = require('../models/user.js'); var Task = require('../models/task.js'); var h = require('./helpers.js');
+
+var ApiError = h.ApiError;
+
+// Check the request body (400 errors only); returns the cleaned fields function parseUserBody(body) { body = body || {}; if (!h.isNonEmptyString(body.name)) throw new ApiError(400, 'User name is required'); if (!h.isNonEmptyString(body.email)) throw new ApiError(400, 'User email is required');
+
+var pendingTasks = body.pendingTasks;
+if (pendingTasks === undefined || pendingTasks === null) pendingTasks = [];
+if (!Array.isArray(pendingTasks)) throw new ApiError(400, 'pendingTasks must be a list of task ids');
+pendingTasks.forEach(function (id) {
+    if (!h.isValidId(id)) throw new ApiError(400, 'pendingTasks contains an invalid task id');
+});
+
+// Remove duplicates, keep order
+pendingTasks = pendingTasks.filter(function (id, i) {
+    return pendingTasks.indexOf(id) === i;
+});
+
+return { name: body.name, email: body.email, pendingTasks: pendingTasks };
+
+}
+
+// Checks that need the database, in the order of the spec async function checkUserReferences(fields, userId) { var emailQuery = { email: fields.email }; if (userId) emailQuery._id = { $ne: userId }; if (await User.exists(emailQuery)) throw new ApiError(400, 'A user with this email already exists');
+
+var tasks = await Task.find({ _id: { $in: fields.pendingTasks } });
+if (tasks.length !== fields.pendingTasks.length) {
+    throw new ApiError(404, 'pendingTasks contains a task that does not exist');
+}
+if (tasks.some(function (t) { return t.completed; })) {
+    throw new ApiError(400, 'A completed task cannot be in pendingTasks');
+}
+
+}
+
+// Make tasks agree with the user's (new) pendingTasks and name async function syncUserTasks(user) { var userId = user._id.toString(); var ids = user.pendingTasks;
+
+// Pending tasks of this user that are no longer listed get unassigned
+await Task.updateMany(
+    { assignedUser: userId, completed: false, _id: { $nin: ids } },
+    { assignedUser: '', assignedUserName: 'unassigned' }
+);
+// All remaining tasks of this user (completed too) carry the current name
+await Task.updateMany({ assignedUser: userId }, { assignedUserName: user.name });
+// Listed tasks move away from any other user
+await User.updateMany(
+    { _id: { $ne: userId }, pendingTasks: { $in: ids } },
+    { $pull: { pendingTasks: { $in: ids } } }
+);
+await Task.updateMany({ _id: { $in: ids } }, { assignedUser: userId, assignedUserName: user.name });
+
+}
+
+module.exports = function (router) {
+
+var usersRoute = router.route('/users');
+
+usersRoute.get(h.wrap(function (req, res) {
+    return h.listHandler(User, undefined, req, res);
+}));
+
+usersRoute.post(h.wrap(async function (req, res) {
+    var fields = parseUserBody(req.body);
+    await checkUserReferences(fields, null);
+
+    var user = new User(fields);
+    await user.save();
+    await syncUserTasks(user);
+
+    h.send(res, 201, 'User created', user);
+}));
+
+var userRoute = router.route('/users/:id');
+
+userRoute.get(h.wrap(function (req, res) {
+    return h.getOneHandler(User, 'User', req, res);
+}));
+
+userRoute.put(h.wrap(async function (req, res) {
+    var user = h.isValidId(req.params.id) ? await User.findById(req.params.id) : null;
+    if (!user) throw new ApiError(404, 'User not found');
+
+    var fields = parseUserBody(req.body);
+    await checkUserReferences(fields, user._id);
+
+    user.name = fields.name;
+    user.email = fields.email;
+    user.pendingTasks = fields.pendingTasks;
+    await user.save();
+    await syncUserTasks(user);
+
+    h.send(res, 200, 'User updated', user);
+}));
+
+userRoute.delete(h.wrap(async function (req, res) {
+    var user = h.isValidId(req.params.id) ? await User.findById(req.params.id) : null;
+    if (!user) throw new ApiError(404, 'User not found');
+
+    await User.deleteOne({ _id: user._id });
+    await Task.updateMany(
+        { assignedUser: user._id.toString() },
+        { assignedUser: '', assignedUserName: 'unassigned' }
+    );
+
+    h.send(res, 200, 'User deleted', user);
+}));
+
+return router;
+
+}; Write C:\Users\Jason\Documents\GitHub\mp3\routes\tasks.js 140 lines var User = require('../models/user.js'); var Task = require('../models/task.js'); var h = require('./helpers.js');
+
+var ApiError = h.ApiError;
+
+function parseDeadline(value) { if (typeof value === 'string' && /^\d+$/.test(value.trim())) value = Number(value); if (!(typeof value === 'number' || h.isNonEmptyString(value))) return null; var date = new Date(value); return isNaN(date.getTime()) ? null : date; }
+
+// Check the request body (400 errors only); returns the cleaned fields function parseTaskBody(body) { body = body || {}; if (!h.isNonEmptyString(body.name)) throw new ApiError(400, 'Task name is required');
+
+if (body.deadline === undefined || body.deadline === null || body.deadline === '') {
+    throw new ApiError(400, 'Task deadline is required');
+}
+var deadline = parseDeadline(body.deadline);
+if (!deadline) throw new ApiError(400, 'Task deadline must be a valid date');
+
+var description = body.description;
+if (description === undefined || description === null) description = '';
+if (typeof description !== 'string') throw new ApiError(400, 'Task description must be a string');
+
+var completed = body.completed;
+if (completed === undefined || completed === null || completed === '') completed = false;
+if (completed === 'true') completed = true;
+if (completed === 'false') completed = false;
+if (typeof completed !== 'boolean') throw new ApiError(400, 'completed must be true or false');
+
+var assignedUser = body.assignedUser;
+if (assignedUser === undefined || assignedUser === null) assignedUser = '';
+if (typeof assignedUser !== 'string') throw new ApiError(400, 'assignedUser must be a user id');
+if (assignedUser !== '' && !h.isValidId(assignedUser)) throw new ApiError(400, 'assignedUser is not a valid user id');
+
+var assignedUserName = body.assignedUserName;
+if (assignedUserName === null || assignedUserName === '') assignedUserName = undefined;
+if (assignedUserName !== undefined && typeof assignedUserName !== 'string') {
+    throw new ApiError(400, 'assignedUserName must be a string');
+}
+if (assignedUser === '') {
+    if (assignedUserName !== undefined && assignedUserName !== 'unassigned') {
+        throw new ApiError(400, 'assignedUserName must be "unassigned" when no user is assigned');
+    }
+    assignedUserName = 'unassigned';
+}
+
+return {
+    name: body.name,
+    description: description,
+    deadline: deadline,
+    completed: completed,
+    assignedUser: assignedUser,
+    assignedUserName: assignedUserName
+};
+
+}
+
+// Checks that need the database: the assigned user must exist and match the name async function checkTaskReferences(fields) { if (fields.assignedUser === '') return; var user = await User.findById(fields.assignedUser); if (!user) throw new ApiError(404, 'Assigned user does not exist'); if (fields.assignedUserName === undefined) { fields.assignedUserName = user.name; } else if (fields.assignedUserName !== user.name) { throw new ApiError(400, 'assignedUserName does not match the name of the assigned user'); } }
+
+// Make users' pendingTasks agree with the task async function syncTaskUsers(task) { var taskId = task._id.toString(); var keepInPending = task.assignedUser !== '' && !task.completed;
+
+// Any other user (e.g. the previous assignee) loses the task
+var others = keepInPending ? { _id: { $ne: task.assignedUser }, pendingTasks: taskId } : { pendingTasks: taskId };
+await User.updateMany(others, { $pull: { pendingTasks: taskId } });
+
+if (keepInPending) {
+    await User.updateOne({ _id: task.assignedUser }, { $addToSet: { pendingTasks: taskId } });
+}
+
+}
+
+module.exports = function (router) {
+
+var tasksRoute = router.route('/tasks');
+
+tasksRoute.get(h.wrap(function (req, res) {
+    return h.listHandler(Task, 100, req, res);
+}));
+
+tasksRoute.post(h.wrap(async function (req, res) {
+    var fields = parseTaskBody(req.body);
+    await checkTaskReferences(fields);
+
+    var task = new Task(fields);
+    await task.save();
+    await syncTaskUsers(task);
+
+    h.send(res, 201, 'Task created', task);
+}));
+
+var taskRoute = router.route('/tasks/:id');
+
+taskRoute.get(h.wrap(function (req, res) {
+    return h.getOneHandler(Task, 'Task', req, res);
+}));
+
+taskRoute.put(h.wrap(async function (req, res) {
+    var task = h.isValidId(req.params.id) ? await Task.findById(req.params.id) : null;
+    if (!task) throw new ApiError(404, 'Task not found');
+
+    var fields = parseTaskBody(req.body);
+    await checkTaskReferences(fields);
+
+    task.set(fields);
+    await task.save();
+    await syncTaskUsers(task);
+
+    h.send(res, 200, 'Task updated', task);
+}));
+
+taskRoute.delete(h.wrap(async function (req, res) {
+    var task = h.isValidId(req.params.id) ? await Task.findById(req.params.id) : null;
+    if (!task) throw new ApiError(404, 'Task not found');
+
+    await Task.deleteOne({ _id: task._id });
+    var taskId = task._id.toString();
+    await User.updateMany({ pendingTasks: taskId }, { $pull: { pendingTasks: taskId } });
+
+    h.send(res, 200, 'Task deleted', task);
+}));
+
+return router;
+
+}; Write C:\Users\Jason\Documents\GitHub\mp3\routes\index.js 23 lines /*
+
+Connect all of your endpoints together here. */ module.exports = function (app, router) { app.use('/api', require('./home.js')(router)); app.use('/api', require('./users.js')(router)); app.use('/api', require('./tasks.js')(router)); // Unknown endpoints app.use(function (req, res) { res.status(404).json({ message: 'Endpoint not found', data: null }); }); // Errors thrown before reaching a route, e.g. a malformed JSON body app.use(function (err, req, res, next) { if (err.type === 'entity.parse.failed') { return res.status(400).json({ message: 'Request body is not valid JSON', data: null }); } console.error(err); res.status(err.status || 500).json({ message: 'Internal server error', data: null }); }); }; Bash — Enable DB connection and handle OPTIONS in server.js IN python - <<'EOF' 2>/dev/null || node -e " const fs=require('fs');let s=fs.readFileSync('server.js','utf8'); s=s.replace('//mongoose.connect(','mongoose.connect('); s=s.replace(' next();\n};\napp.use(allowCrossDomain);',' // Answer CORS preflight requests directly\n if (req.method === 'OPTIONS') return res.sendStatus(204);\n next();\n};\napp.use(allowCrossDomain);'); fs.writeFileSync('server.js',s);" EOF grep -n "mongoose.connect|OPTIONS'" server.js
+
+OUT 16:mongoose.connect(process.env.MONGODB_URI).catch(function (err) { console.error('MongoDB connection error:', err.message); }); Edit C:\Users\Jason\Documents\GitHub\mp3\server.js Added 2 lines 8:49 PM
+
+Now install dependencies and test against a temporary in-memory MongoDB:
+
+Bash — Install project deps and in-memory MongoDB for testing IN npm install 2>&1 | tail -3 && cd "C:/Users/Jason/AppData/Local/Temp/claude/c--Users-Jason-Documents-GitHub-mp3/256d4419-42eb-4ce3-95f3-838ecc3a27a2/scratchpad" && npm init -y >/dev/null && npm install mongodb-memory-server 2>&1 | tail -3
+
+OUT npm audit fix --force
+
+Run npm audit for details. run npm fund for details
+
+found 0 vulnerabilities Shell cwd was reset to C:\Users\Jason\Documents\GitHub\mp3 Write C:\Users\Jason\AppData\Local\Temp\claude\c--Users-Jason-Documents-GitHub-mp3\256d4419-42eb-4ce3-95f3-838ecc3a27a2\scratchpad\test.js 143 lines const { MongoMemoryServer } = require('mongodb-memory-server'); const { spawn } = require('child_process'); const assert = require('assert');
+
+const ROOT = 'C:/Users/Jason/Documents/GitHub/mp3'; const BASE = 'http://localhost:3999/api'; let failures = 0;
+
+async function req(method, path, body) { const r = await fetch(BASE + path, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body)) }); const text = await r.text(); return { status: r.status, body: text ? JSON.parse(text) : null }; } function check(name, cond, extra) { if (!cond) { failures++; console.log('FAIL', name, extra !== undefined ? JSON.stringify(extra) : ''); } else console.log('ok ', name); }
+
+(async () => { const mongo = await MongoMemoryServer.create(); const srv = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...process.env, MONGODB_URI: mongo.getUri('mp3'), PORT: '3999' }, stdio: 'inherit' }); await new Promise(r => setTimeout(r, 2500)); try { const fake = '0123456789abcdef01234567'; let r; // users create / validate r = await req('POST', '/users', { name: 'Alice', email: 'a@x.com' }); check('create user 201', r.status === 201 && r.body.message && r.body.data._id && Array.isArray(r.body.data.pendingTasks) && r.body.data.dateCreated, r); const A = r.body.data; check('no name 400', (await req('POST', '/users', { email: 'q@x.com' })).status === 400); check('no email 400', (await req('POST', '/users', { name: 'q' })).status === 400); check('dup email 400', (await req('POST', '/users', { name: 'q', email: 'a@x.com' })).status === 400); check('bad json 400', (await req('POST', '/users', '{bad')).status === 400); r = await req('POST', '/users', { name: 'Bob', email: 'b@x.com', dateCreated: '2000-01-01' }); const B = r.body.data; check('dateCreated ignored', new Date(B.dateCreated).getFullYear() > 2000);
+
+    // tasks create / validate
+    check('task no deadline 400', (await req('POST', '/tasks', { name: 't' })).status === 400);
+    check('task no name 400', (await req('POST', '/tasks', { deadline: '2030-01-01' })).status === 400);
+    check('task bad deadline 400', (await req('POST', '/tasks', { name: 't', deadline: 'nope' })).status === 400);
+    r = await req('POST', '/tasks', { name: 't0', deadline: 1893456000000 });
+    check('task defaults', r.status === 201 && r.body.data.completed === false && r.body.data.assignedUser === '' && r.body.data.assignedUserName === 'unassigned' && r.body.data.description === '', r);
+    const T0 = r.body.data;
+    r = await req('POST', '/tasks', { name: 't1', deadline: '2030-01-01', assignedUser: A._id });
+    check('task assigned fills name', r.status === 201 && r.body.data.assignedUserName === 'Alice', r);
+    const T1 = r.body.data;
+    r = await req('GET', '/users/' + A._id);
+    check('A pending has T1', r.body.data.pendingTasks.includes(T1._id), r);
+    check('assignedUser bad format 400', (await req('POST', '/tasks', { name: 't', deadline: '2030-01-01', assignedUser: 'xyz' })).status === 400);
+    check('assignedUser missing 404', (await req('POST', '/tasks', { name: 't', deadline: '2030-01-01', assignedUser: fake })).status === 404);
+    check('assignedUserName mismatch 400', (await req('POST', '/tasks', { name: 't', deadline: '2030-01-01', assignedUser: A._id, assignedUserName: 'Bob' })).status === 400);
+    r = await req('POST', '/tasks', { name: 't2', deadline: '2030-01-01', assignedUser: A._id, completed: true });
+    const T2 = r.body.data;
+    check('completed task not pending', !(await req('GET', '/users/' + A._id)).body.data.pendingTasks.includes(T2._id));
+
+    // select on single
+    r = await req('GET', '/users/' + A._id + '?select=' + encodeURIComponent('{"name":1}'));
+    check('select single', r.status === 200 && r.body.data.name === 'Alice' && r.body.data.email === undefined, r);
+    r = await req('GET', '/tasks/' + T1._id + '?select=' + encodeURIComponent('{"_id":0}') + '&where=' + encodeURIComponent('{"name":"zzz"}'));
+    check('select single _id:0, where ignored', r.status === 200 && r.body.data._id === undefined && r.body.data.name === 't1', r);
+    check('get bad id 404', (await req('GET', '/users/abc')).status === 404);
+    check('get missing id 404', (await req('GET', '/tasks/' + fake)).status === 404);
+
+    // PUT missing
+    check('put user missing 404', (await req('PUT', '/users/' + fake, { name: 'x', email: 'x@x' })).status === 404);
+    check('put user bad id 404', (await req('PUT', '/users/abc', {})).status === 404);
+    check('put task missing 404', (await req('PUT', '/tasks/' + fake, { name: 'x', deadline: '2030-01-01' })).status === 404);
+
+    // PUT user: move T1 from A to B, add T0
+    check('put user completed task 400', (await req('PUT', '/users/' + B._id, { name: 'Bob', email: 'b@x.com', pendingTasks: [T2._id] })).status === 400);
+    check('put user missing task 404', (await req('PUT', '/users/' + B._id, { name: 'Bob', email: 'b@x.com', pendingTasks: [fake] })).status === 404);
+    check('put user bad task id 400', (await req('PUT', '/users/' + B._id, { name: 'Bob', email: 'b@x.com', pendingTasks: ['bad'] })).status === 400);
+    check('put user dup email 400', (await req('PUT', '/users/' + B._id, { name: 'Bob', email: 'a@x.com' })).status === 400);
+    r = await req('PUT', '/users/' + B._id, { name: 'Bobby', email: 'b@x.com', pendingTasks: [T1._id, T0._id] });
+    check('put user 200', r.status === 200 && r.body.data.pendingTasks.length === 2 && r.body.data.dateCreated === B.dateCreated, r);
+    check('A lost T1', !(await req('GET', '/users/' + A._id)).body.data.pendingTasks.includes(T1._id));
+    r = await req('GET', '/tasks/' + T1._id);
+    check('T1 now Bobby', r.body.data.assignedUser === B._id && r.body.data.assignedUserName === 'Bobby', r);
+    // remove T0 from B
+    await req('PUT', '/users/' + B._id, { name: 'Bobby', email: 'b@x.com', pendingTasks: [T1._id] });
+    r = await req('GET', '/tasks/' + T0._id);
+    check('T0 unassigned', r.body.data.assignedUser === '' && r.body.data.assignedUserName === 'unassigned', r);
+    // rename A: completed T2 name updates
+    await req('PUT', '/users/' + A._id, { name: 'Alicia', email: 'a@x.com' });
+    r = await req('GET', '/tasks/' + T2._id);
+    check('rename updates completed task', r.body.data.assignedUserName === 'Alicia' && r.body.data.assignedUser === A._id, r);
+
+    // PUT task
+    r = await req('PUT', '/tasks/' + T1._id, { name: 't1', deadline: '2030-01-01', assignedUser: A._id, assignedUserName: 'Alicia' });
+    check('put task move 200', r.status === 200, r);
+    check('B lost T1', !(await req('GET', '/users/' + B._id)).body.data.pendingTasks.includes(T1._id));
+    check('A got T1', (await req('GET', '/users/' + A._id)).body.data.pendingTasks.includes(T1._id));
+    r = await req('PUT', '/tasks/' + T1._id, { name: 't1', deadline: '2030-01-01', assignedUser: A._id, completed: true });
+    check('complete keeps assignment', r.body.data.assignedUser === A._id, r);
+    check('complete removes pending', !(await req('GET', '/users/' + A._id)).body.data.pendingTasks.includes(T1._id));
+    await req('PUT', '/tasks/' + T1._id, { name: 't1', deadline: '2030-01-01', assignedUser: A._id, completed: false });
+    check('uncomplete re-adds', (await req('GET', '/users/' + A._id)).body.data.pendingTasks.includes(T1._id));
+    r = await req('PUT', '/tasks/' + T1._id, { name: 't1', deadline: '2030-01-01', assignedUser: '' });
+    check('unassign via put', r.body.data.assignedUserName === 'unassigned' && !(await req('GET', '/users/' + A._id)).body.data.pendingTasks.includes(T1._id), r);
+    check('put task no name 400', (await req('PUT', '/tasks/' + T1._id, { deadline: '2030-01-01' })).status === 400);
+
+    // queries
+    for (let i = 0; i < 120; i++) await req('POST', '/tasks', { name: 'bulk' + i, deadline: '2030-01-01', completed: i % 2 === 0 });
+    r = await req('GET', '/tasks');
+    check('default limit 100', r.body.data.length === 100, r.body.data.length);
+    r = await req('GET', '/tasks?count=true');
+    check('count all', r.body.data === 123, r.body.data);
+    r = await req('GET', '/tasks?where=' + encodeURIComponent('{"completed":true}') + '&count=true');
+    check('count where', r.body.data === 61, r.body.data);
+    r = await req('GET', '/tasks?sort=' + encodeURIComponent('{"name":-1}') + '&limit=3&select=' + encodeURIComponent('{"name":1}'));
+    check('sort/limit/select', r.body.data.length === 3 && r.body.data[0].name === 't2' && r.body.data[0].deadline === undefined, r);
+    r = await req('GET', '/tasks?skip=120&limit=20');
+    check('skip', r.body.data.length === 3, r.body.data.length);
+    r = await req('GET', '/users?where=' + encodeURIComponent(JSON.stringify({ _id: fake })));
+    check('where no match 200 []', r.status === 200 && r.body.data.length === 0, r);
+    r = await req('GET', '/tasks?where=' + encodeURIComponent(JSON.stringify({ _id: { $in: [T0._id, T1._id] } })));
+    check('where $in', r.body.data.length === 2);
+    check('bad where 400', (await req('GET', '/tasks?where={bad')).status === 400);
+    check('bad id in where 400', (await req('GET', '/tasks?where=' + encodeURIComponent('{"_id":"bad"}'))).status === 400);
+
+    // delete
+    await req('PUT', '/tasks/' + T1._id, { name: 't1', deadline: '2030-01-01', assignedUser: A._id });
+    r = await req('DELETE', '/tasks/' + T1._id);
+    check('delete task 200', r.status === 200, r);
+    check('deleted task gone', (await req('GET', '/tasks/' + T1._id)).status === 404);
+    check('deleted from pending', !(await req('GET', '/users/' + A._id)).body.data.pendingTasks.includes(T1._id));
+    check('delete again 404', (await req('DELETE', '/tasks/' + T1._id)).status === 404);
+    r = await req('DELETE', '/users/' + A._id);
+    check('delete user 200', r.status === 200);
+    r = await req('GET', '/tasks/' + T2._id);
+    check('user delete unassigns completed', r.body.data.assignedUser === '' && r.body.data.assignedUserName === 'unassigned', r);
+    check('deleted user 404', (await req('GET', '/users/' + A._id)).status === 404);
+    check('delete bad id 404', (await req('DELETE', '/users/xyz')).status === 404);
+} catch (e) { failures++; console.error(e); }
+srv.kill(); await mongo.stop();
+console.log(failures ? failures + ' FAILURES' : 'ALL PASSED');
+process.exit(failures ? 1 : 0);
+
+})(); Bash — Run API tests against in-memory MongoDB IN cd "C:/Users/Jason/AppData/Local/Temp/claude/c--Users-Jason-Documents-GitHub-mp3/256d4419-42eb-4ce3-95f3-838ecc3a27a2/scratchpad" && node test.js 2>&1 | grep -v "^ok"
+
+OUT TypeError: fetch failed at node:internal/deps/undici/undici:13502:13 at process.processTicksAndRejections (node:internal/process/task_queues:105:5) at async req (C:\Users\Jason\AppData\Local\Temp\claude\c--Users-Jason-Documents-GitHub-mp3\256d4419-42eb-4ce3-95f3-838ecc3a27a2\scratchpad\test.js:10:15) at async C:\Users\Jason\AppData\Local\Temp\claude\c--Users-Jason-Documents-GitHub-mp3\256d4419-42eb-4ce3-95f3-838ecc3a27a2\scratchpad\test.js:30:13 { [cause]: AggregateError [ECONNREFUSED]: at internalConnectMultiple (node:net:1139:18) at afterConnectMultiple (node:net:1712:7) { code: 'ECONNREFUSED', [errors]: [ [Error], [Error] ] } } 1 FAILURES Shell cwd was reset to C:\Users\Jason\Documents\GitHub\mp3 Bash — Start server directly to see startup errors IN PORT=3999 MONGODB_URI=mongodb://127.0.0.1:1/x timeout 5 node server.js; echo exit $?
+
+OUT ◇ injected env (0) from .env // tip: ⌁ auth for agents [www.vestauth.com] Server running on port 3999 exit 124 Bash — Poll for server readiness then rerun tests IN cd "C:/Users/Jason/AppData/Local/Temp/claude/c--Users-Jason-Documents-GitHub-mp3/256d4419-42eb-4ce3-95f3-838ecc3a27a2/scratchpad" && sed -i 's|await new Promise(r => setTimeout(r, 2500));|for (let i = 0; i < 60; i++) { try { await fetch(BASE); break; } catch { await new Promise(r => setTimeout(r, 500)); } }|' test.js && node test.js 2>&1 | grep -v "^ok"
+
+OUT ◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true } Server running on port 3999 ALL PASSED Shell cwd was reset to C:\Users\Jason\Documents\GitHub\mp3 [This command modified 1 file you've previously read: ......\AppData\Local\Temp\claude\c--Users-Jason-Documents-GitHub-mp3\256d4419-42eb-4ce3-95f3-838ecc3a27a2\scratchpad\test.js. Call Read before editing.] Bash — Check working tree and env files IN git status --short && ls -a | grep env
+
+OUT M models/user.js M routes/index.js M server.js ?? models/task.js ?? routes/helpers.js ?? routes/tasks.js ?? routes/users.js .env.example 8:52 PM
+
+All the code is written and tested locally. I used a temporary in-memory database to simulate the various cases the assignment requires; more than 60 checks, all passed. It has not been deployed yet, and I have not run the official autograder yet.
+
+Files changed
+
+models/user.js, models/task.js: the two models. dateCreated is generated by the server; if the client sends it, it is ignored.
+routes/users.js, routes/tasks.js: all 10 endpoints, including field validation and two-way reference syncing.
+routes/helpers.js: query parameter parsing (where, sort, select, skip, limit, count) and the unified {message, data} response format.
+routes/index.js: mounts the routes. Unknown paths return 404, and a request body that is not valid JSON returns 400.
+server.js: enabled the database connection line.
+
+Some design choices:
+
+Every request completes all of its validation first and only then writes to the database, so a failed request does not modify the database.
+The order of status code checks follows the README and FAQ strictly.
+A successful DELETE returns 200, with the deleted record in data.
+
+What you still have to do yourself (needs your accounts)
+
+MongoDB Atlas: create a free cluster, add 0.0.0.0/0 (allow access from all IPs) under Network Access, create a database user, and get the connection string.
+Run locally: run cp .env.example .env, fill in MONGODB_URI, then npm start. Do not commit .env.
+Commit the code: git add -A && git commit && git push. I have not committed anything yet. Tell me if you want me to do it.
+Deploy to Render: create a new Web Service and connect your GitHub repo. Build command npm install, start command npm start. Add MONGODB_URI under Environment, and set the Node version to 24.
+Self-check: change API_URL at submit.js:9 to your Render address and run npm run submit to see the score. If any item doesn't get full marks, paste the output to me and I'll fix it.
+Official submission: fill out the Submission Form in the README. Because an LLM was used, you must attach this chat log and answer the LLM questions in the survey, otherwise it counts as an academic integrity violation.
+
+[image.png, 1167×1168] Like this? 9:01 PM
+
+Yes, choose the first one, Drivers and Client Libraries.
+
+Next
+
+Choose Node.js as the driver, keep the default version, and copy the connection string shown on the page. The format is roughly:
+
+mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+
+Replace <password> with your database user's password. This is not your Atlas account login password, and the < and > must also be removed.
+Add a database name between .net/ and ?, for example mp3:
+
+mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/mp3?retryWrites=true&w=majority&appName=Cluster0
+
+If you don't add it, the data is written to the default test database. The program still works, but adding it is clearer. 4. In the project root run cp .env.example .env, open .env, and replace what follows MONGODB_URI= with the string above.
+
+Also double-check In the left menu go to Network Access and see whether 0.0.0.0/0 is in the list. If not, click Add IP Address → Allow Access from Anywhere. Without it, Render won't be able to connect to the database after deployment.
+
+Verify Run npm start. If no MongoDB connection error appears in the terminal, the connection works. Then open http://localhost:3000/api/users in a browser; seeing {"message":"OK","data":[]} means it's correct.
+
+The connection string contains the password, so you don't need to send it to me, and don't commit it to git.
+
+[image.png, 1114×1252]
+
+Bash — Create .env with connection string placeholder IN [ ! -f .env ] && printf 'TOKEN=secret-starter-mern\nMONGODB_URI=mongodb+srv://Jason123:<db_password>@cluster0.lc2l1ew.mongodb.net/mp3?retryWrites=true&w=majority&appName=Cluster0\n' > .env && cat .env && git check-ignore .env
+
+OUT TOKEN=secret-starter-mern MONGODB_URI=mongodb+srv://Jason123:<db_password>@cluster0.lc2l1ew.mongodb.net/mp3?retryWrites=true&w=majority&appName=Cluster0 .env 9:05 PM
+
+Yes, this is the right page. Based on the screenshot I created .env in the project root. It is in .gitignore, so it won't be committed:
+
+MONGODB_URI=mongodb+srv://Jason123:<db_password>@cluster0.lc2l1ew.mongodb.net/mp3?retryWrites=true&w=majority&appName=Cluster0
+
+Two things you still need to do
+
+The cluster address may have been copied wrongly by me. I read it from the screenshot, and in lc2l1ew I can't tell the l from the 1. The safest way is to click the copy button on the right and replace that part of .env with the copied cluster0.xxxxx.
+Replace <db_password> with the password of the database user Jason123. Delete the angle brackets too. If the password contains special characters such as @ : / ? # %, it must be URL-encoded first, for example @ becomes %40. A simpler way is to change the user's password in Atlas under Database Access to one that has only letters and digits. If you forgot the password, you can also reset it in Database Access via Edit → Edit Password.
+
+After changing it, run npm start, then open http://localhost:3000/api/users in a browser. Seeing {"message":"OK","data":[]} means it's connected, and then you can deploy to Render.
+
+mongodb+srv://Jason123:<db_password>@cluster0.lc2l1ew.mongodb.net/ 9:05 PM
+
+The cluster address you copied is cluster0.lc2l1ew.mongodb.net, the same as what I put in .env, so no change is needed.
+
+One step is left: open .env and replace <db_password>, including the angle brackets, with your real password. For example, if the password is abc123, the line becomes:
+
+MONGODB_URI=mongodb+srv://Jason123:abc123@cluster0.lc2l1ew.mongodb.net/mp3?retryWrites=true&w=majority&appName=Cluster0
+
+After changing it, run npm start and visit http://localhost:3000/api/users. Seeing {"message":"OK","data":[]} means the connection works. If there is an error, paste the terminal output to me, but delete the password first.
+
+[PASSWORD REDACTED] 9:05 PM
+
+Bash — Fill password into .env and test the Atlas connection IN sed -i 's|<db_password>|[PASSWORD REDACTED]|' .env && (PORT=3998 timeout 12 node server.js & sleep 8; curl -s localhost:3998/api/users; echo) 2>&1
+
+OUT ◇ injected env (2) from .env // tip: ⌁ auth for agents [www.vestauth.com] Server running on port 3998 {"message":"OK","data":[]} 9:06 PM
+
+The database is connected. The @ in the password has to be written as %40, otherwise it is treated as the separator before the host address, so what I wrote in .env is the URL-encoded form of your password. I started the server and visited /api/users, which returned {"message":"OK","data":[]}, meaning it can connect to Atlas normally.
+
+I suggest changing the password. This assignment requires submitting the chat log with the LLM, and your password has already appeared in this conversation, so the TAs would see it. How:
+
+In Atlas, go to Database Access, find Jason123, and click Edit → Edit Password to set a new password with only letters and digits.
+Tell me the new password, or edit .env yourself: the part after Jason123: and before @cluster0. Do not send the new password in the chat either. You can edit .env yourself, and redact the password in the chat log before submitting.
+
+Next step: deploy to Render
+
+First commit and push the code: git add -A, git commit -m "Implement MP3 API", git push. .env is ignored automatically and won't be pushed. I can commit for you if you want.
+Create a new Web Service on Render and connect your GitHub repo, with these settings:
+Build Command: npm install
+Start Command: npm start
+Add under Environment:
+MONGODB_URI, with the same value as the line in .env
+NODE_VERSION, with the value 24
+After it is deployed, send me the address Render gives you. I'll fill it into submit.js and run the autograder self-check.
+
+Push it up, and don't write anything about working with Claude.
+
+Bash — Commit all changes and push to GitHub IN git remote -v && git add -A && git status --short && git commit -q -m "Implement users and tasks API" && git push 2>&1 | tail -3 && git log --oneline -2
+
+OUT origin https://github.com/Jason1add/mp3.git (fetch) origin https://github.com/Jason1add/mp3.git (push) warning: in the working copy of 'models/user.js', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'routes/index.js', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'models/task.js', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'routes/helpers.js', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'routes/tasks.js', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'routes/users.js', LF will be replaced by CRLF the next time Git touches it A models/task.js M models/user.js A routes/helpers.js M routes/index.js A routes/tasks.js A routes/users.js M server.js To https://github.com/Jason1add/mp3.git 196dd9a..2ee8512 main -> main 2ee8512 Implement users and tasks API 196dd9a Initial commit 9:23 PM
+
+The code has been committed and pushed to https://github.com/Jason1add/mp3. The commit message is a single line, "Implement users and tasks API", with nothing about working with Claude. .env was not committed, and the password is not in the repo.
+
+The course rules still have to be followed, though: since an LLM was used, when you fill out the submission form at the end you need to attach the chat log and answer the LLM questions. That has nothing to do with git commit messages, but not submitting it counts as an academic integrity violation.
+
+Next step is deploying to Render: Build is npm install, Start is npm start, and add the environment variables MONGODB_URI and NODE_VERSION=24. Send me the address once it is deployed and I'll run the autograder for you.
+
+What is Render? 9:23 PM
+
+Render (https://render.com) is a cloud platform that lets you deploy your Node program to the internet. The free tier is enough.
+
+Why you must deploy: the autograder runs on the course's servers and cannot reach your computer's localhost. You have to put the API at a public address, such as https://xxx.onrender.com, so that it can send requests to test it.
+
+Deployment steps
+
+Open https://render.com, click Get Started, and choose to sign in with GitHub. This lets it read your repo directly.
+After signing in, click New + in the top right → Web Service.
+In the repo list, choose Jason1add/mp3. If it isn't in the list, click "Configure GitHub" to authorize Render to access this repo.
+Fill in the following:
+Setting	Value
+Name	Anything, e.g. mp3-jason. The final address will be https://mp3-jason.onrender.com
+Region	Any
+Branch	main
+Runtime / Language	Node
+Build Command	npm install
+Start Command	npm start
+Instance Type	Free
+Under Environment Variables add two variables:
+MONGODB_URI: copy everything after MONGODB_URI= in .env, i.e. the version with %40
+NODE_VERSION: 24
+Click Deploy Web Service and wait a few minutes. When the log shows Server running on port ..., the deployment is done.
+Open https://your-name.onrender.com/api/users in a browser. Seeing {"message":"OK","data":[]} means success.
+
+Two things to note
+
+The free tier service goes to sleep after a period without visits, and visiting it again takes about 1 minute to wake it up. So open your address in a browser once before running the autograder.
+After the deadline, when the TAs grade, this service also has to stay running. Don't delete it.
+
+After it is deployed, send me the address and I'll fill it into submit.js and run the self-check.
+
+npm install
+
+[image.png, 2371×544] What do I fill in? 9:39 PM
+
+You need to fill in two rows here.
+
+First row (the empty row that's there now):
+
+KEY: MONGODB_URI
+VALUE:
+
+mongodb+srv://Jason123:[PASSWORD REDACTED]@cluster0.lc2l1ew.mongodb.net/mp3?retryWrites=true&w=majority&appName=Cluster0
+
+Second row (click + Add Environment Variable first to add a row):
+
+KEY: NODE_VERSION
+VALUE: 24
+
+You can also click Add from .env and paste the whole content of the .env file; it will split it into multiple rows automatically. But that only gives you the TOKEN and MONGODB_URI rows, and NODE_VERSION still has to be added manually.
+
+After both rows are filled in, scroll to the bottom of the page and click Deploy Web Service. Wait until the log shows Server running on port ..., then send me the address.
+
+If you later change the password in Atlas, remember to update MONGODB_URI here too, otherwise it won't be able to connect to the database.
+
+[image.png, 2334×652] 9:42 PM
+
+Both rows are filled in correctly. In the screenshot, the character after %40 looks a bit like an a, but that should just be the font; it is an @. If you copied the string I gave you directly, it's fine.
+
+Now scroll to the bottom of the page and click Deploy Web Service. Deployment takes about 2 to 5 minutes, and when the log shows something like Server running on port 10000, it's done. Then open https://your-service-name.onrender.com/api/users in a browser, confirm you can see {"message":"OK","data":[]}, and send me that address.
+
+If the log shows MongoDB connection error, paste those lines to me, but delete the password first.
+
+MongoDB connection error: Could not connect to any servers in your MongoDB Atlas cluster. One common reason is that you're trying to access the database from an IP that isn't whitelisted. Make sure your current IP address is on your Atlas cluster's IP whitelist: https://www.mongodb.com/docs/atlas/security-whitelist/ 9:44 PM
+
+This error means Atlas's IP whitelist doesn't contain Render's server address. It connected locally because Atlas had only added your computer's IP at the time.
+
+Fix
+
+Open Atlas and click Network Access in the left menu. It is under the Security category; in the new interface it may also be called "Database & Network Access" → "IP Access List".
+Click + Add IP Address.
+Click Allow Access from Anywhere, which fills in 0.0.0.0/0 automatically.
+Click Confirm and wait for the status to change from Pending to Active, about 1 minute.
+
+Then restart Render Go back to the service page on Render and click Manual Deploy → Restart service in the top right, or Deploy latest commit also works.
+
+After the restart, if the log only shows Server running on port ... and no connection error, it's connected. Then open https://your-service-name.onrender.com/api/users to confirm, and send me the address.
+
+[image.png, 2515×1362] 9:47 PM
+
+This version of the interface has no "Allow Access from Anywhere" button; just fill it in manually:
+
+Access List Entry: 0.0.0.0/0
+Comment: can be left empty, or write Render
+Keep the temporary switch below it turned off. If it's on, the entry is deleted automatically after 6 hours, and by the time the TAs grade you won't be able to connect.
+
+Click Confirm and wait until the status of the new row in the list is Active.
+
+Then go back to Render and click Manual Deploy → Restart service. After the log has no connection error, open https://your-service-name.onrender.com/api/users to confirm you can see {"message":"OK","data":[]}, and send me the address.
+
+==> Cloning from https://github.com/Jason1add/mp3 ==> Checking out commit 2ee8512b4b927824f3d67b501ae49894fb6500a0 in branch main ==> Requesting Node.js version 24 ==> Using Node.js version 24.22.2 via environment variable NODE_VERSION ==> Docs on specifying a Node.js version: https://render.com/docs/node-version ==> Installing Node.js version 24.22.2... ==> Running build command 'yarn'... yarn install v1.22.22 info No lockfile found. warning package-lock.json found. Your project contains lock files generated by tools other than Yarn. It is advised not to mix package managers in order to avoid resolution inconsistencies caused by unsynchronized lock files. To clear this warning, remove package-lock.json. [1/5] Validating package.json... [2/5] Resolving packages... [3/5] Fetching packages... [4/5] Linking dependencies... [5/5] Building fresh packages... success Saved lockfile. Done in 1.52s. ==> Uploading build... ==> Uploaded in 1.4s. Compression took 0.6s ==> Build successful 🎉 ==> Deploying... ==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance ==> Running 'npm run start'
+
+mp3_starter@1.0.0 start node server.js
+
+◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true } Server running on port 10000 ==> Your service is live 🎉 ==> ==> /////////////////////////////////////////////////////////// ==> ==> Available at your primary URL https://mp3-al2o.onrender.com ==> ==> /////////////////////////////////////////////////////////// 9:50 PM
+
+The deployment succeeded. I'll first check whether the live site is reachable, then run the autograder:
+
+Bash — Check deployed API and set API_URL in submit.js IN curl -s -m 90 https://mp3-al2o.onrender.com/api/users | head -c 300; echo; cd /c/Users/Jason/Documents/GitHub/mp3 && sed -i 's|https://YOUR-APP-NAME.onrender.com|https://mp3-al2o.onrender.com|' submit.js && grep -n "^const API_URL" submit.js
+
+OUT {"message":"OK","data":[]} 9:const API_URL = "https://mp3-al2o.onrender.com"; // <-- change this to your deployed API's URL Bash — Run the course autograder against the deployed API IN node submit.js 2>&1
+
+OUT Submitting https://mp3-al2o.onrender.com to the autograder... This can take a few minutes (the autograder runs many requests against your API).
+
+[PASS ] POST /users (1/1) [PASS ] POST /users (validation) (1/1) [PASS ] POST /tasks (1/1) [PASS ] POST /tasks (validation) (1/1) [PASS ] GET /users/:id (select) (0.75/0.75) [PASS ] GET /tasks/:id (select) (0.75/0.75) [PASS ] PUT /users/:id (not found) (1/1) [PASS ] PUT /tasks/:id (not found) (1/1) [PASS ] PUT /tasks/:id (two-way reference) (2.5/2.5) [PASS ] PUT /users/:id (two-way reference) (2/2) [PASS ] PUT /tasks/:id (assignedUserName mismatch) (1/1) [PASS ] GET /tasks (where) (0.75/0.75) [PASS ] GET /tasks (sort) (0.75/0.75) [PASS ] GET /tasks (limit) (0.75/0.75) [FAIL ] DELETE /tasks/:id (0/1) - Deleting a task: response body should be empty - Deleting a task: expected status 204, received 200 [PASS ] GET /tasks/:id (deleted) (1/1) [PASS ] GET /tasks (count) (0.75/0.75) [FAIL ] DELETE /users/:id (0/1) - Deleting a user: response body should be empty - Deleting a user: expected status 204, received 200 [PASS ] GET /users/:id (deleted) (1/1)
+
+Score: 90/100 (18/20 points) 9:50 PM
+
+The first run scored 90/100. The two DELETE endpoints got no points: the autograder requires a successful delete to return 204 with an empty body. I'm fixing it now:
+
+Bash — Make DELETE endpoints return 204 with empty body IN sed -i "s|h.send(res, 200, 'User deleted', user);|res.status(204).end();|; " routes/users.js && sed -i "s|h.send(res, 200, 'Task deleted', task);|res.status(204).end();|" routes/tasks.js && grep -n "204" routes/users.js routes/tasks.js
+
+OUT routes/users.js:114: res.status(204).end(); routes/tasks.js:135: res.status(204).end(); [This command modified 2 files you've previously read: routes\tasks.js, routes\users.js. Call Read before editing.] Bash — Retest locally, then commit and push the fix IN cd "C:/Users/Jason/AppData/Local/Temp/claude/c--Users-Jason-Documents-GitHub-mp3/256d4419-42eb-4ce3-95f3-838ecc3a27a2/scratchpad" && sed -i "s/check('delete task 200', r.status === 200/check('delete task 204', r.status === 204/; s/check('delete user 200', r.status === 200)/check('delete user 204', r.status === 204)/" test.js && node test.js 2>&1 | grep -v "^ok" ; cd /c/Users/Jason/Documents/GitHub/mp3 && git add -A && git commit -q -m "Return 204 from DELETE endpoints" && git push -q 2>&1 | tail -2; git log --oneline -1
+
+OUT ◇ injected env (1) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] } Server running on port 3999 ALL PASSED warning: in the working copy of 'routes/tasks.js', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'routes/users.js', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'submit.js', LF will be replaced by CRLF the next time Git touches it 4b9f102 Return 204 from DELETE endpoints [This command modified 1 file you've previously read: ......\AppData\Local\Temp\claude\c--Users-Jason-Documents-GitHub-mp3\256d4419-42eb-4ce3-95f3-838ecc3a27a2\scratchpad\test.js. Call Read before editing.] 9:51 PM
+
+The code has been pushed, and Render will redeploy automatically. After the new version is live I'll run the autograder again:
+
+Bash — Wait for redeploy, then rerun the autograder IN cd "C:/Users/Jason/AppData/Local/Temp/claude/c--Users-Jason-Documents-GitHub-mp3/256d4419-42eb-4ce3-95f3-838ecc3a27a2/scratchpad" && cat > poll.js <<'EOF' const B='https://mp3-al2o.onrender.com/api'; (async()=>{for(let i=0;i<60;i++){try{ const t=await (await fetch(B+'/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'deploycheck',deadline:'2030-01-01'})})).json(); const r=await fetch(B+'/tasks/'+t.data._id,{method:'DELETE'}); if(r.status===204){console.log('new version live');return;} if(r.status===200){} }catch(e){} await new Promise(r=>setTimeout(r,15000));} console.log('timed out');})(); EOF node poll.js && cd /c/Users/Jason/Documents/GitHub/mp3 && node submit.js 2>&1 | tail -25
+
+OUT Command running in background with ID: b63jsetyn. Output is being written to: C:\Users\Jason\AppData\Local\Temp\claude\c--Users-Jason-Documents-GitHub-mp3\256d4419-42eb-4ce3-95f3-838ecc3a27a2\tasks\b63jsetyn.output. You will be notified when it completes — do not poll that file or sleep while waiting. Read the file only if the user asks for progress, or if you need a line it prints before you can go on, such as a server's ready line or port. Session cwd remains C:\Users\Jason\Documents\GitHub\mp3; directory changes made by the backgrounded command do not apply to subsequent commands. 9:51 PM
+
+The first autograder run scored 90/100, and the two DELETE endpoints got no points. The reason is that the autograder requires a successful delete to return 204 with an empty body, while I had written it to return 200 with the deleted record.
+
+I have fixed it, the local tests all pass, and it is pushed to GitHub. Render is redeploying automatically; I'm waiting in the background for the new version to go live, after which I'll run the autograder again automatically and tell you the result in a few minutes.
+
+This push also has one more change: API_URL at submit.js:9 was changed to https://mp3-al2o.onrender.com. The commit message is still a single line and does not mention Claude.
+
+Render used yarn for the build, not the npm install I suggested you fill in, and there is a lock file warning in the log. The deployment succeeded, so you can ignore it; if you want to get rid of it, change the Build Command to npm install in Render's Settings.
+
+Bash — Show autograder rerun output IN cat "C:/Users/Jason/AppData/Local/Temp/claude/c--Users-Jason-Documents-GitHub-mp3/256d4419-42eb-4ce3-95f3-838ecc3a27a2/tasks/b63jsetyn.output"
+
+OUT new version live Submitting https://mp3-al2o.onrender.com to the autograder... This can take a few minutes (the autograder runs many requests against your API).
+
+[PASS ] POST /users (1/1) [PASS ] POST /users (validation) (1/1) [PASS ] POST /tasks (1/1) [PASS ] POST /tasks (validation) (1/1) [PASS ] GET /users/:id (select) (0.75/0.75) [PASS ] GET /tasks/:id (select) (0.75/0.75) [PASS ] PUT /users/:id (not found) (1/1) [PASS ] PUT /tasks/:id (not found) (1/1) [PASS ] PUT /tasks/:id (two-way reference) (2.5/2.5) [PASS ] PUT /users/:id (two-way reference) (2/2) [PASS ] PUT /tasks/:id (assignedUserName mismatch) (1/1) [PASS ] GET /tasks (where) (0.75/0.75) [PASS ] GET /tasks (sort) (0.75/0.75) [PASS ] GET /tasks (limit) (0.75/0.75) [PASS ] DELETE /tasks/:id (1/1) [PASS ] GET /tasks/:id (deleted) (1/1) [PASS ] GET /tasks (count) (0.75/0.75) [PASS ] DELETE /users/:id (1/1) [PASS ] GET /users/:id (deleted) (1/1)
+
+Score: 100/100 (20/20 points)
+
+[exited with code 0] 9:52 PM
+
+The second autograder run scored 100/100, with all 19 items passing. After the new version was deployed I ran it once more, and the two DELETE endpoints now pass.
+
+What's left for you to do yourself (deadline is November 3, 11:59 PM CT)
+
+Fill out the submission form: https://forms.gle/4V1v2VWU78XwM3H57. Fill in your repo address https://github.com/Jason1add/mp3 and Render address https://mp3-al2o.onrender.com as the form requires. Running submit.js alone does not count as a submission; you must fill out this form.
+Attach the chat log: the course rules say that if you used an LLM you have to submit the conversation with the LLM, and also answer the LLM questions on the form. Before submitting, redact the database password in the log, or change the password.
+I suggest changing the database password: in Atlas under Database Access, set a new password for Jason123, then update the local .env and MONGODB_URI on Render too. After changing, restart the Render service and open /api/users to confirm it can connect.
+Keep the service running: when the TAs grade, they will visit your Render address, and the service and database both need to be connectable by then. Don't delete the service, and don't delete the 0.0.0.0/0 IP rule in Atlas.
+
+So what did this make? A website? 9:53 PM
+
+Not a website; it is a backend API. It has no pages and no buttons, and is only responsible for receiving requests, reading and writing the database, and then returning JSON data.
+
+An analogy Building a todo app generally has three layers:
+
+Frontend: the interface users see, such as the list, checkboxes and the "add task" button. This was not built this time.
+Backend API: when the frontend's button is clicked, it sends a request here, for example "add a task for Alice". The backend validates the data, writes it to the database, and returns the result to the frontend. This is the layer built this time.
+Database: where the data is actually stored. This time it is MongoDB Atlas.
+
+What it can do specifically If you open https://mp3-al2o.onrender.com/api/tasks in a browser, you will see a string of JSON. It supports these operations:
+
+Manage users: create, delete, update, read
+Manage tasks: create, delete, update, read; a task has a name, a deadline, and whether it is completed
+Assign tasks to users, with both sides' data automatically kept consistent. For example, marking a task completed automatically removes it from that user's "pending list"; deleting a user makes their tasks automatically "unassigned".
+Queries: for example "only show completed tasks", "sort by name", "take only the first 20"
+
+Why only the backend This course is Web Development, and MP3 specifically practices the backend, that is Node, Express and the database. A browser address bar can only send GET requests, so testing POST, PUT and DELETE generally uses a tool like Postman, and the autograder likewise sends requests automatically to test it.
+
+If a later assignment asks you to write a frontend, the frontend's interface will call these endpoints to display and modify data.
+
+{ "message": "OK", "data": [] } It's just this, or? 9:53 PM
+
+Seeing data: [] is normal; it shows the endpoint is working, it's just that the database is empty right now.
+
+Why it's empty: when the autograder tests, it creates some users and tasks and deletes them after the test. The test task I created to check the deployment was also deleted, so there is not a single record now.
+
+To see an effect, you first have to add data. A browser address bar can only send GET requests and cannot create data, so you can use one of the following two ways:
+
+Use Postman
+Choose POST as the method and enter https://mp3-al2o.onrender.com/api/users
+Choose raw → JSON for Body, enter {"name": "Jason", "email": "jason@test.com"}, then click Send
+Refresh https://mp3-al2o.onrender.com/api/users and you will see this user
+Let me add some sample data I can use a script to add a few users and tasks to your database and assign some of the tasks to users. Afterwards you can try these addresses in the browser:
+/api/tasks
+/api/tasks?where={"completed":true}
+/api/users?sort={"name":1}
+
+The assignment doesn't require data in the database; the FAQ says you don't need to empty it, nor pre-populate it, so leaving it empty does not affect your grade. Do you want me to add sample data?
+
+No need. Then how do I know the whole thing is right? 9:54 PM
+
+The autograder's 100/100 shows it is right. The FAQ states that what submit.js calls is the same autograder the TAs use for final grading. It just sent dozens of requests to your live API, covering all grading items, and all 19 items got full marks:
+
+Creating users and tasks, returning 400 when fields are missing or the email is duplicated
+select on /:id
+PUT on a nonexistent id returns 404
+Two-way references: after a task changes hands, is marked completed, or a user is renamed, the data on both sides stays consistent
+Queries with where, sort, limit, count
+After a delete, a lookup returns 404, and the references are cleaned up
+
+Before the autograder ran, I also wrote more than 60 tests locally, covering the various edge cases listed in the README, such as invalid id format, invalid deadline, putting a completed task into pendingTasks, malformed JSON, and tasks becoming unassigned after a user is deleted. These all passed too.
+
+To keep this score
+
+At grading time, your Render service and Atlas database must be connectable.
+Before the deadline, fill out the submission form and attach the chat log (redact the password before submitting, or change it). If you do these two things, your grade is the score you just saw.
+
+Check the assignment requirements carefully again to see whether everything is met, then run the tests again to see whether it is a perfect score. 9:55 PM
+
+I'll go through the README and FAQ again item by item.
+
+Read C:\Users\Jason\Documents\GitHub\mp3\routes\helpers.js (lines 59-118) The check found two places on the /:id endpoints that don't match the README, which I have fixed: with a wrong id plus bad JSON, it now returns 404, and I removed the extra filter parameter compatibility, so all other parameters are ignored. Edit C:\Users\Jason\Documents\GitHub\mp3\routes\helpers.js Added 1 line Edit C:\Users\Jason\Documents\GitHub\mp3\routes\helpers.js Modified Bash — Remove the unused parseSelect/filter alias helper IN node -e " const fs=require('fs');let s=fs.readFileSync('routes/helpers.js','utf8'); s=s.replace(/// "select" $also accepted as \"filter\", its old name$\r?\nfunction parseSelect$query$ {[\s\S]*?\n}\r?\n\r?\n/,''); fs.writeFileSync('routes/helpers.js',s);" && grep -n "filter|parseSelect" routes/helpers.js; echo "grep exit $?"
+
+OUT grep exit 1 9:55 PM
+
+I'm adding tests for these two cases, running the local tests, and then pushing:
+
+Bash — Add tests, run them, then commit and push IN cd "C:/Users/Jason/AppData/Local/Temp/claude/c--Users-Jason-Documents-GitHub-mp3/256d4419-42eb-4ce3-95f3-838ecc3a27a2/scratchpad" && sed -i "s| check('get bad id 404', (await req('GET', '/users/abc')).status === 404);| check('get bad id 404', (await req('GET', '/users/abc')).status === 404);\n check('bad id before bad select 404', (await req('GET', '/users/abc?select={bad')).status === 404);\n check('bad select 400', (await req('GET', '/users/' + A._id + '?select={bad')).status === 400);\n check('other params ignored on :id', (await req('GET', '/users/' + A._id + '?filter={bad&where={bad&limit=x')).status === 200);|" test.js && grep -c "other params ignored" test.js && node test.js 2>&1 | grep -v "^ok" && cd /c/Users/Jason/Documents/GitHub/mp3 && git add -A && git commit -q -m "Check URL id before select and ignore other params on /:id" && git push -q 2>&1 | grep -v warning; git log --oneline -1
+
+OUT 1 ◇ injected env (1) from .env // tip: ⌘ suppress logs { quiet: true } Server running on port 3999 ALL PASSED warning: in the working copy of 'routes/helpers.js', LF will be replaced by CRLF the next time Git touches it 3c2ad2d Check URL id before select and ignore other params on /:id [This command modified 1 file you've previously read: ......\AppData\Local\Temp\claude\c--Users-Jason-Documents-GitHub-mp3\256d4419-42eb-4ce3-95f3-838ecc3a27a2\scratchpad\test.js. Call Read before editing.] 9:56 PM
+
+The local tests all pass, and the code has been pushed. Next I wait for Render to deploy the new version, and run the autograder once that's done:
+
+Bash — Wait for redeploy, then rerun the autograder IN cd "C:/Users/Jason/AppData/Local/Temp/claude/c--Users-Jason-Documents-GitHub-mp3/256d4419-42eb-4ce3-95f3-838ecc3a27a2/scratchpad" && cat > poll2.js <<'EOF' (async()=>{for(let i=0;i<60;i++){try{ const r=await fetch('https://mp3-al2o.onrender.com/api/users/abc?select={bad'); if(r.status===404){console.log('new version live');return;} }catch(e){} await new Promise(r=>setTimeout(r,15000));} console.log('timed out');process.exit(1);})(); EOF node poll2.js && cd /c/Users/Jason/Documents/GitHub/mp3 && node submit.js 2>&1 | tail -24
+
+OUT Command running in background with ID: btbth5keg. Output is being written to: C:\Users\Jason\AppData\Local\Temp\claude\c--Users-Jason-Documents-GitHub-mp3\256d4419-42eb-4ce3-95f3-838ecc3a27a2\tasks\btbth5keg.output. You will be notified when it completes — do not poll that file or sleep while waiting. Read the file only if the user asks for progress, or if you need a line it prints before you can go on, such as a server's ready line or port. Session cwd remains C:\Users\Jason\Documents\GitHub\mp3; directory changes made by the backgrounded command do not apply to subsequent commands. 9:56 PM
+
+I have checked the README and FAQ requirements in full. Apart from the two places I just fixed, everything else is compliant:
+
+Requirement	Status
+10 endpoints, implemented with Node + Express + Mongoose	✅
+where, sort, select, skip, limit, count can be combined arbitrarily, implemented with Mongoose query methods	✅
+Default limit: 100 for tasks, unlimited for users	✅
+Returns {message, data} format, error messages don't expose Mongoose errors	✅
+Status codes 200, 201, 204, 400, 404, 500	✅
+Required field validation, email unique, other fields have defaults, dateCreated generated by the server and not modifiable	✅
+Error check order: URL id → field format → whether referenced objects exist	✅
+When a request fails, the database is not modified	✅ (all validation is done before writing to the database)
+Two-way references: every case listed in the README and FAQ tables	✅
+Database on MongoDB Atlas, IP whitelist set to allow any access	✅
+Keep .gitignore, don't commit .env	✅
+Deployed on Render with Node 24	✅
+
+The two fixes are both on the /:id endpoints, in the code in routes/helpers.js:
+
+It now checks the id in the URL first, returning 404 right away if the id is wrong, and only then parses select. Before it was the reverse.
+I removed the extra filter parameter name I had added for compatibility. The README says /:id only recognizes select and ignores all other parameters, so now even a malformed filter will not produce a 400.
+
+After the fix, the local tests all pass, and the code has been pushed to GitHub, with no mention of Claude in the commit message.
+
+Render is deploying the new version, and after the deployment is done the autograder will run automatically in the background. I'll tell you the score when it comes out.
+
+Bash — Show autograder rerun output IN cat "C:/Users/Jason/AppData/Local/Temp/claude/c--Users-Jason-Documents-GitHub-mp3/256d4419-42eb-4ce3-95f3-838ecc3a27a2/tasks/btbth5keg.output"
+
+OUT new version live This can take a few minutes (the autograder runs many requests against your API).
+
+[PASS ] POST /users (1/1) [PASS ] POST /users (validation) (1/1) [PASS ] POST /tasks (1/1) [PASS ] POST /tasks (validation) (1/1) [PASS ] GET /users/:id (select) (0.75/0.75) [PASS ] GET /tasks/:id (select) (0.75/0.75) [PASS ] PUT /users/:id (not found) (1/1) [PASS ] PUT /tasks/:id (not found) (1/1) [PASS ] PUT /tasks/:id (two-way reference) (2.5/2.5) [PASS ] PUT /users/:id (two-way reference) (2/2) [PASS ] PUT /tasks/:id (assignedUserName mismatch) (1/1) [PASS ] GET /tasks (where) (0.75/0.75) [PASS ] GET /tasks (sort) (0.75/0.75) [PASS ] GET /tasks (limit) (0.75/0.75) [PASS ] DELETE /tasks/:id (1/1) [PASS ] GET /tasks/:id (deleted) (1/1) [PASS ] GET /tasks (count) (0.75/0.75) [PASS ] DELETE /users/:id (1/1) [PASS ] GET /users/:id (deleted) (1/1)
+
+Score: 100/100 (20/20 points)
+
+[exited with code 0] 9:57 PM
+
+The new version is live on Render, and the autograder reran and still scored 100/100, with all 19 items passing.
+
+While checking against the README and FAQ just now, two places on the /:id endpoints did not meet the requirements, and I have fixed them:
+
+It now checks the id in the URL first, returning 404 if it is wrong, and only then looks at select.
+/:id only recognizes select, and all other parameters are ignored.
+
+All other requirements are met, and the local tests all pass.
+
+What remains is what was said before:
+
+Before the deadline (November 3, 11:59 PM CT), fill out the submission form.
+Attach the chat log. Redact the database password in it before submitting, and preferably also change to a new password in Atlas, then update the local .env and MONGODB_URI on Render.
+Until grading is complete, keep both the Render service and the Atlas 0.0.0.0/0 rule.
