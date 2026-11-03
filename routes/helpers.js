@@ -53,12 +53,6 @@ function parseBoolParam(query, key) {
     throw new ApiError(400, '"' + key + '" parameter must be true or false');
 }
 
-// "select" (also accepted as "filter", its old name)
-function parseSelect(query) {
-    var select = parseJsonParam(query, 'select');
-    return select !== undefined ? select : parseJsonParam(query, 'filter');
-}
-
 // Errors MongoDB/Mongoose raise because of bad client input in query parameters
 function isQueryInputError(err) {
     return ['CastError', 'MongoServerError', 'StrictModeError', 'ObjectParameterError'].indexOf(err.name) !== -1;
@@ -68,7 +62,7 @@ function isQueryInputError(err) {
 async function listHandler(Model, defaultLimit, req, res) {
     var where = parseJsonParam(req.query, 'where') || {};
     var sort = parseJsonParam(req.query, 'sort');
-    var select = parseSelect(req.query);
+    var select = parseJsonParam(req.query, 'select');
     var skip = parseIntParam(req.query, 'skip');
     var limit = parseIntParam(req.query, 'limit');
     var count = parseBoolParam(req.query, 'count');
@@ -100,8 +94,9 @@ async function listHandler(Model, defaultLimit, req, res) {
 
 // GET on a single resource: only "select" applies
 async function getOneHandler(Model, label, req, res) {
-    var select = parseSelect(req.query);
+    // The URL id is checked first (404), then the select parameter (400)
     if (!isValidId(req.params.id)) throw new ApiError(404, label + ' not found');
+    var select = parseJsonParam(req.query, 'select');
 
     var query = Model.findById(req.params.id);
     if (select) query = query.select(select);
